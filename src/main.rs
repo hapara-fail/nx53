@@ -3,6 +3,7 @@ mod config;
 mod firewall;
 mod logic;
 mod monitor;
+mod update;
 
 use anyhow::Result;
 use clap::Parser;
@@ -71,6 +72,12 @@ async fn main() -> Result<()> {
             };
             firewall.flush(fw_target)?;
         }
+        Some(Commands::Update) => {
+            update::update()?;
+        }
+        Some(Commands::Version) => {
+            update::print_version();
+        }
         None => {
             info!("Starting nx53 daemon in {:?} mode...", args.mode);
 
@@ -79,6 +86,12 @@ async fn main() -> Result<()> {
                 Arc::from(firewall);
 
             // Start Monitor in background
+            std::thread::spawn(|| {
+                if let Err(e) = update::check_for_updates() {
+                    log::debug!("Failed to check for updates: {}", e);
+                }
+            });
+
             let monitor_inspector = inspector.clone();
             let monitor_firewall = firewall_arc.clone();
 

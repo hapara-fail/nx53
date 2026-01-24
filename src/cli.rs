@@ -66,6 +66,11 @@ pub enum Commands {
         #[arg(value_enum)]
         target: FlushTarget,
     },
+    /// Updates nx53 to the latest version from GitHub.
+    Update,
+    /// Displays the current version.
+    Version,
+
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

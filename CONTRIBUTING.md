@@ -55,7 +55,20 @@ The project is built in **Rust**.
 
 - **Code:** Follow standard Rust formatting (`cargo fmt`). Use idiomatic Rust patterns.
 - **Performance:** This is a high-throughput application. Avoid unnecessary clones or allocations in the hot path (packet loop).
-- **Safety:** Minimize `unsafe` blocks unless absolutely necessary for FFI or performance (with justification).
+- **Safety:** Minimize `uVsafe` blocks unless absolutely necessary for FFI or performance (with justification).
+
+## 🚀 Releasing a New Version
+
+To release a new version that is compatible with the `nx53 update` command:
+
+1.  **Tag the Release**: Push a new tag starting with `v` (e.g., `v0.2.0`).
+    ```bash
+    git tag v0.2.0
+    git push origin v0.2.0
+    ```
+2.  **Automated Build**: The GitHub Action `release.yml` will automatically build the binary for Linux.
+3.  **Binary Name**: The workflow MUST produce an asset named `nx53-linux-x86_64` and attach it to the release. This is configured in `.github/workflows/release.yml`.
+4.  **Verification**: Once the release is published, running `nx53 update` on a client will detect the new version.
 
 ---
 

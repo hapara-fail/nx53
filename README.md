@@ -140,13 +140,15 @@ nx53 uses a multi-stage **Defense Pipeline** to filter traffic:
 
 The software is controlled via a standard Command Line Interface.
 
-| Command       | Arguments                 | Description                                                                         |
-| :------------ | :------------------------ | :---------------------------------------------------------------------------------- |
-| `nx53 block`  | `<ip/domain>`             | Adds a static rule to drop all packets from an IP or specific domain queries.       |
-| `nx53 allow`  | `<ip/domain>`             | Adds a static rule to whitelist an IP or domain (bypasses all checks).              |
-| `nx53 toggle` | `intelligent` \| `manual` | Toggles the active status of the heuristic engine or manual rulesets independently. |
-| `nx53 stats`  | `[--json]`                | Displays real-time telemetry: attack counts, dropped IPs, and resource usage.       |
-| `nx53 flush`  | `all` \| `banned`         | Clears current iptables chains managed by nx53.                                     |
+| Command        | Arguments                 | Description                                                                         |
+| :------------- | :------------------------ | :---------------------------------------------------------------------------------- |
+| `nx53 block`   | `<ip/domain>`             | Adds a static rule to drop all packets from an IP or specific domain queries.       |
+| `nx53 allow`   | `<ip/domain>`             | Adds a static rule to whitelist an IP or domain (bypasses all checks).              |
+| `nx53 toggle`  | `intelligent` \| `manual` | Toggles the active status of the heuristic engine or manual rulesets independently. |
+| `nx53 stats`   | `[--json]`                | Displays real-time telemetry: attack counts, dropped IPs, and resource usage.       |
+| `nx53 flush`   | `all` \| `banned`         | Clears current iptables chains managed by nx53.                                     |
+| `nx53 update`  | N/A                       | Updates nx53 to the latest version from GitHub.                                     |
+| `nx53 version` | N/A                       | Displays the current version.                                                       |
 
 ---
 
