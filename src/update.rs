@@ -5,14 +5,27 @@ use log::{info, warn};
 use self_update::cargo_crate_version;
 
 #[cfg(target_os = "linux")]
+const REPO_OWNER: &str = "hapara-fail";
+#[cfg(target_os = "linux")]
+const REPO_NAME: &str = "nx53";
+const BIN_NAME: &str = "nx53";
+#[cfg(target_os = "linux")]
+const UPDATE_TARGET: &str = "linux-x86_64";
+
+#[cfg(target_os = "linux")]
+fn configure_github_update() -> Result<self_update::backends::github::UpdateBuilder<'static>> {
+    Ok(self_update::backends::github::Update::configure()
+        .repo_owner(REPO_OWNER)
+        .repo_name(REPO_NAME)
+        .bin_name(BIN_NAME)
+        .target(UPDATE_TARGET)
+        .current_version(cargo_crate_version!()))
+}
+
+#[cfg(target_os = "linux")]
 pub fn update() -> Result<()> {
-    let status = self_update::backends::github::Update::configure()
-        .repo_owner("hapara-fail")
-        .repo_name("nx53")
-        .bin_name("nx53")
-        .target("linux-x86_64")
+    let status = configure_github_update()?
         .show_download_progress(true)
-        .current_version(cargo_crate_version!())
         .build()?
         .update()?;
 
@@ -24,23 +37,16 @@ pub fn update() -> Result<()> {
 pub fn check_for_updates() -> Result<()> {
     // Only check in release mode or if explicitly requested to avoid api rate limits during dev?
     // For now just check.
-    let releases = self_update::backends::github::Update::configure()
-        .repo_owner("hapara-fail")
-        .repo_name("nx53")
-        .bin_name("nx53")
-        .target("linux-x86_64")
-        .current_version(cargo_crate_version!())
-        .build()?
-        .get_latest_release()?;
+    let releases = configure_github_update()?.build()?.get_latest_release()?;
 
     let current = cargo_crate_version!();
     if self_update::version::bump_is_greater(current, &releases.version)? {
         warn!(
-            "Update available! v{} -> v{} (Run 'nx53 update' to upgrade)",
-            current, releases.version
+            "Update available! v{} -> v{} (Run '{} update' to upgrade)",
+            current, releases.version, BIN_NAME
         );
     } else {
-        info!("nx53 is up to date (v{})", current);
+        info!("{} is up to date (v{})", BIN_NAME, current);
     }
 
     Ok(())
@@ -48,16 +54,19 @@ pub fn check_for_updates() -> Result<()> {
 
 #[cfg(not(target_os = "linux"))]
 pub fn update() -> Result<()> {
-    println!("Auto-update is only supported on Linux.");
+    println!("Auto-update for {} is only supported on Linux.", BIN_NAME);
     Ok(())
 }
 
 #[cfg(not(target_os = "linux"))]
 pub fn check_for_updates() -> Result<()> {
-    println!("Update checks are only supported on Linux.");
+    println!(
+        "Update checks for {} are only supported on Linux.",
+        BIN_NAME
+    );
     Ok(())
 }
 
 pub fn print_version() {
-    println!("nx53 v{}", env!("CARGO_PKG_VERSION"));
+    println!("{} v{}", BIN_NAME, env!("CARGO_PKG_VERSION"));
 }

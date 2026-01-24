@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn};
 use pcap::{Capture, Device};
 use std::sync::Arc;
+use tokio::task;
 
 pub struct TrafficMonitor {
     inspector: Arc<PacketInspector>,
@@ -36,55 +37,77 @@ impl TrafficMonitor {
     }
 
     pub async fn start(&self) -> Result<()> {
-        let mut cap = Capture::from_device(self.interface_name.as_str())?
-            .promisc(true)
-            .snaplen(65535)
-            .timeout(1000)
-            .open()?;
+        let interface_name = self.interface_name.clone();
+        let inspector = Arc::clone(&self.inspector);
+        let firewall = Arc::clone(&self.firewall);
 
-        // Filter for DNS (UDP port 53)
-        // TCP is also mentioned in spec, adding "port 53" covers both usually unless qualified
-        cap.filter("udp port 53 or tcp port 53", true)?;
+        // Run blocking pcap capture in a dedicated blocking thread so we don't
+        // block the async runtime.
+        task::spawn_blocking(move || -> Result<()> {
+            let mut cap = Capture::from_device(interface_name.as_str())?
+                .promisc(true)
+                .snaplen(65535)
+                .timeout(1000)
+                .open()?;
 
-        info!("Starting packet capture loop...");
+            // Filter for DNS (UDP port 53)
+            // TCP is also mentioned in spec, adding "port 53" covers both usually unless qualified
+            cap.filter("udp port 53 or tcp port 53", true)?;
 
-        loop {
-            match cap.next_packet() {
-                Ok(packet) => {
-                    // Parse packet to extract Source IP and Query Domain
-                    // This requires parsing Ethernet -> IP -> UDP/TCP -> DNS
-                    // For brevity/simplicity in this MVP, we will attempt basic extraction.
-                    // Doing full packet parsing manually is complex.
-                    // We'll trust the logic structure for now and add a TODO for robust parsing.
+            info!("Starting packet capture loop...");
 
-                    if let Some((src_ip, query_domain, qtype)) = parse_dns_packet(packet.data) {
-                        debug!("Query: {} -> {} ({})", src_ip, query_domain, qtype);
-                        let should_block = self.inspector.inspect(
-                            &src_ip,
-                            &query_domain,
-                            Some(&qtype),
-                            packet.data.len(),
-                        );
-                        if should_block {
-                            if let Err(e) = self.firewall.block_ip(&src_ip) {
-                                error!("Failed to block IP {}: {}", src_ip, e);
-                            } else {
-                                warn!("Blocked hostile IP: {} (Query: {})", src_ip, query_domain);
+            loop {
+                match cap.next_packet() {
+                    Ok(packet) => {
+                        // Parse packet to extract Source IP and Query Domain
+                        // This requires parsing Ethernet -> IP -> UDP/TCP -> DNS
+                        // For brevity/simplicity in this MVP, we will attempt basic extraction.
+                        // Doing full packet parsing manually is complex.
+                        // We'll trust the logic structure for now and add a TODO for robust parsing.
+
+                        if let Some((src_ip, query_domain, qtype)) = parse_dns_packet(packet.data) {
+                            debug!("Query: {} -> {} ({})", src_ip, query_domain, qtype);
+                            let should_block = inspector.inspect(
+                                &src_ip,
+                                &query_domain,
+                                Some(&qtype),
+                                packet.data.len(),
+                            );
+                            if should_block {
+                                if let Err(e) = firewall.block_ip(&src_ip) {
+                                    error!("Failed to block IP {}: {}", src_ip, e);
+                                } else {
+                                    warn!(
+                                        "Blocked hostile IP: {} (Query: {})",
+                                        src_ip, query_domain
+                                    );
+                                }
                             }
+                        } else {
+                            debug!(
+                                "Failed to parse DNS packet (length: {} bytes); ignoring packet",
+                                packet.data.len()
+                            );
                         }
                     }
+                    Err(pcap::Error::TimeoutExpired) => {
+                        // Continue on timeouts; they are expected when no packets arrive within the timeout window.
+                    }
+                    Err(e) => {
+                        error!("Packet capture error: {}", e);
+                        // Break out of the capture loop on non-timeout errors to avoid infinite error loops.
+                        break;
+                    }
                 }
-                Err(pcap::Error::TimeoutExpired) => {
-                    // Continue
-                }
-                Err(e) => {
-                    error!("Packet capture error: {}", e);
-                    // Decide whether to break or continue
-                }
+                // This loop intentionally runs in a blocking thread; it no longer
+                // blocks the async runtime.
             }
-            // Yield to async runtime? pcap is blocking usage here typically unless we use async-pcap or stream.
-            // Using a simple blocking loop in `start` usage with `tokio::task::spawn_blocking` is common.
-        }
+
+            Ok(())
+        })
+        .await??;
+
+        Ok(())
     }
 }
 
@@ -123,7 +146,10 @@ pub fn parse_dns_packet(data: &[u8]) -> Option<(String, String, String)> {
                 ));
             }
         }
-        Err(_) => return None,
+        Err(e) => {
+            debug!("Failed to parse DNS packet from {}: {}", src_ip, e);
+            return None;
+        }
     }
 
     None
