@@ -70,7 +70,6 @@ pub enum Commands {
     Update,
     /// Displays the current version.
     Version,
-
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

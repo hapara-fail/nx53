@@ -10,7 +10,7 @@ pub fn update() -> Result<()> {
         .repo_owner("hapara-fail")
         .repo_name("nx53")
         .bin_name("nx53")
-        .target("linux-x86_64") 
+        .target("linux-x86_64")
         .show_download_progress(true)
         .current_version(cargo_crate_version!())
         .build()?
