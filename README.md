@@ -66,6 +66,55 @@ sudo cp target/release/nx53 /usr/local/bin/
 
 ---
 
+## 🔥 Advanced Protection Features
+
+### Rate Limiting Per IP
+
+Graduated response system to prevent abuse without blanket blocking:
+
+| Offense | Action                       |
+| :------ | :--------------------------- |
+| First   | Temporary ban (default: 60s) |
+| Repeat  | Longer ban (default: 300s)   |
+
+Configure in `config.toml`:
+
+```toml
+[rate_limit]
+enabled = true
+requests_per_sec = 10
+first_offense_duration_secs = 60
+second_offense_duration_secs = 300
+```
+
+### DNS Query Type Filtering
+
+Blocks query types commonly used in amplification attacks:
+
+- **ANY queries:** Blocked by default (major amplification vector)
+- **Large TXT queries:** Blocked when exceeding size threshold
+
+```toml
+[filters]
+block_any_queries = true
+block_large_txt = true
+txt_max_size = 1024
+```
+
+### Automatic Whitelist Learning
+
+IPs with clean traffic patterns are automatically whitelisted after a configurable period:
+
+```toml
+auto_whitelist_days = 7
+```
+
+### IPv6 Support
+
+Full dual-stack monitoring with IPv6-specific attack pattern detection (enabled by default).
+
+---
+
 ## 🧠 The Logic Engine
 
 nx53 employs a **Dynamic Behavioral Inspection** engine to stop attacks without false positives.
@@ -76,10 +125,14 @@ DNS Amplification attacks involve spoofed IPs flooding a resolver with queries f
 
 ### The Solution
 
-1.  **Traffic Monitoring:** Continuously monitors ingress DNS queries.
-2.  **Anomaly Detection:** Identifies domains receiving disproportionate traffic.
-3.  **The "First-Packet" Rule:** If a **new** IP's very first query is for a flagged "High-Volume" domain, it is immediately marked as hostile and blocked.
-4.  **The "Escape Hatch" (Legitimacy Validation):** If an IP queries a _different_ domain (one not under attack), it is re-classified as a legitimate user and whitelisted.
+nx53 uses a multi-stage **Defense Pipeline** to filter traffic:
+
+1.  **Static Filtering:** Immediately drops specific query types (e.g., `ANY`, large `TXT`) known for amplification.
+2.  **Volumetric Analysis:** Continuously monitors domain confirmation levels to detect active attacks.
+3.  **Rate Limiting:** Enforces strict queries-per-second limits on new or suspicious IPs, applying graduated temporary bans for offenders.
+4.  **The "First-Packet" Rule:** If a **new** IP's very first query is for a flagged "High-Volume" domain, it is immediately marked as hostile and blocked.
+5.  **The "Escape Hatch" (Legitimacy Validation):** If an IP queries a _different_ domain (one not under attack), it is re-classified as a legitimate user and whitelisted.
+6.  **Auto-Whitelisting:** IPs that maintain a clean reputation for N days (default: 7) are automatically trusted.
 
 ---
 

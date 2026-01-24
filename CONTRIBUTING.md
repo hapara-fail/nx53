@@ -12,14 +12,14 @@ We have simplified our issue reporting process. Please use the direct links belo
 
 If the daemon crashes, panics, or misidentifies traffic:
 
-- **[Click here to open a Bug Report](https://github.com/hapara-fail/nx53/issues/new?template=bug_report.md)**
+- **[Click here to open a Bug Report](https://github.com/hapara-fail/nx53/issues/new?template=bug_report.yml)**
 - **Crucial:** Please provide your OS, Kernel version, and the specific command/flags used when the error occurred.
 
 ### 2. Suggesting Features & Improvements
 
 If you have an idea for a new heuristic algorithm or optimization:
 
-- **[Click here to open a Feature Request](https://github.com/hapara-fail/nx53/issues/new?template=feature_request.md)**
+- **[Click here to open a Feature Request](https://github.com/hapara-fail/nx53/issues/new?template=feature_request.yml)**
 - We love community ideas! If you have technical insights on how to implement your idea in Rust, please include them.
 
 ---
@@ -65,4 +65,4 @@ We value accuracy, privacy, and collaboration. Please ensure your interactionsâ€
 
 ## ðŸ“œ License
 
-By contributing to nx53, you agree that your contributions will be licensed under the same **MIT License** that covers the project. Details can be found at [LICENSE](LICENSE).
+By contributing to hapara.fail, you agree that your contributions will be licensed under the same **GNU General Public License v3.0 (GPLv3)** that covers the project. Details can be found at [www.hapara.fail/license](https://www.hapara.fail/license).
