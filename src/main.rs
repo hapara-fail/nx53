@@ -8,7 +8,7 @@ use anyhow::Result;
 use clap::Parser;
 use cli::{Args, Commands};
 use env_logger::Env;
-use log::{info, error, warn};
+use log::{error, info, warn};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let args = Args::parse();
-    
+
     // Initialize Core Components
     let firewall = match firewall::get_backend() {
         Ok(f) => f,
@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
             return Err(e);
         }
     };
-    
+
     // Load Config: Check local first, then /etc/nx53/config.toml
     let config = if let Ok(c) = config::AppConfig::load_from_file("config.toml") {
         c
@@ -35,7 +35,11 @@ async fn main() -> Result<()> {
         warn!("No config file found (checked ./config.toml and /etc/nx53/config.toml). Using defaults.");
         config::AppConfig::default()
     };
-    info!("Using config: Mode={}, Threshold={}", config.mode, config.get_threshold());
+    info!(
+        "Using config: Mode={}, Threshold={}",
+        config.mode,
+        config.get_threshold()
+    );
 
     let inspector = Arc::new(logic::PacketInspector::new(
         config.get_threshold(),
@@ -69,25 +73,27 @@ async fn main() -> Result<()> {
         }
         None => {
             info!("Starting nx53 daemon in {:?} mode...", args.mode);
-            
+
             // Wrap firewall in Arc to share with monitor thread
-            let firewall_arc: Arc<dyn firewall::FirewallBackend + Send + Sync> = Arc::from(firewall);
+            let firewall_arc: Arc<dyn firewall::FirewallBackend + Send + Sync> =
+                Arc::from(firewall);
 
             // Start Monitor in background
             let monitor_inspector = inspector.clone();
             let monitor_firewall = firewall_arc.clone();
-            
+
             tokio::task::spawn_blocking(move || {
-                let monitor = match monitor::TrafficMonitor::new(monitor_inspector, None, monitor_firewall) {
-                    Ok(m) => m,
-                    Err(e) => {
-                        error!("Traffic Monitor failed to initialize: {}", e);
-                        return;
-                    }
-                };
-                
+                let monitor =
+                    match monitor::TrafficMonitor::new(monitor_inspector, None, monitor_firewall) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            error!("Traffic Monitor failed to initialize: {}", e);
+                            return;
+                        }
+                    };
+
                 if let Err(e) = tokio::runtime::Handle::current().block_on(monitor.start()) {
-                     error!("Monitor loop crashed: {}", e);
+                    error!("Monitor loop crashed: {}", e);
                 }
             });
 

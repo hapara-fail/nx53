@@ -1,7 +1,7 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use anyhow::{Result, Context};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum Profile {
@@ -27,7 +27,7 @@ impl Default for RateLimitConfig {
             enabled: true,
             requests_per_sec: 10,
             burst: 20,
-            first_offense_duration_secs: 60, // 1 minute
+            first_offense_duration_secs: 60,   // 1 minute
             second_offense_duration_secs: 300, // 5 minutes
         }
     }
@@ -56,13 +56,13 @@ pub struct AppConfig {
     pub profile: Option<Profile>,
     /// Optional manual override. If set, this takes precedence over profile defaults.
     pub threshold_override: Option<u64>,
-    
+
     #[serde(default)]
     pub rate_limit: RateLimitConfig,
-    
+
     #[serde(default)]
     pub filters: FilterConfig,
-    
+
     /// Auto-whitelist IPs after this many days of clean traffic
     pub auto_whitelist_days: Option<u64>,
 }
@@ -151,7 +151,7 @@ mod tests {
         let toml = toml::to_string(&config).unwrap();
         // Should contain profile = "School"
         assert!(toml.contains("profile = \"School\""));
-        
+
         let loaded: AppConfig = toml::from_str(&toml).unwrap();
         assert_eq!(loaded.get_threshold(), 50_000);
     }
