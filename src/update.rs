@@ -13,18 +13,19 @@ const BIN_NAME: &str = "nx53";
 const UPDATE_TARGET: &str = "linux-x86_64";
 
 #[cfg(target_os = "linux")]
-fn configure_github_update() -> Result<self_update::backends::github::UpdateBuilder<'static>> {
-    Ok(self_update::backends::github::Update::configure()
+fn configure_github_update() -> self_update::backends::github::UpdateBuilder {
+    self_update::backends::github::Update::configure()
         .repo_owner(REPO_OWNER)
         .repo_name(REPO_NAME)
         .bin_name(BIN_NAME)
         .target(UPDATE_TARGET)
-        .current_version(cargo_crate_version!()))
+        .current_version(cargo_crate_version!())
+        .clone()
 }
 
 #[cfg(target_os = "linux")]
 pub fn update() -> Result<()> {
-    let status = configure_github_update()?
+    let status = configure_github_update()
         .show_download_progress(true)
         .build()?
         .update()?;
@@ -37,7 +38,7 @@ pub fn update() -> Result<()> {
 pub fn check_for_updates() -> Result<()> {
     // Only check in release mode or if explicitly requested to avoid api rate limits during dev?
     // For now just check.
-    let releases = configure_github_update()?.build()?.get_latest_release()?;
+    let releases = configure_github_update().build()?.get_latest_release()?;
 
     let current = cargo_crate_version!();
     if self_update::version::bump_is_greater(current, &releases.version)? {
