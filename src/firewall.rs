@@ -1,4 +1,7 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+#[cfg(target_os = "linux")]
+use log::info;
+#[cfg(not(target_os = "linux"))]
 use log::{info, warn};
 
 /// Trait defining firewall operations.
@@ -23,16 +26,16 @@ pub struct IptablesBackend {
 #[cfg(target_os = "linux")]
 impl IptablesBackend {
     pub fn new() -> Result<Self> {
-        let ipt = iptables::new(false)?;
+        let ipt = iptables::new(false).map_err(|e| anyhow!("{}", e))?;
         Ok(Self { ipt })
     }
 
     fn ensure_chain(&self) -> Result<()> {
         // Simple check/create logic for NX53_INPUT chain
-        if !self.ipt.chain_exists("filter", "NX53_INPUT")? {
-            self.ipt.new_chain("filter", "NX53_INPUT")?;
+        if !self.ipt.chain_exists("filter", "NX53_INPUT").map_err(|e| anyhow!("{}", e))? {
+            self.ipt.new_chain("filter", "NX53_INPUT").map_err(|e| anyhow!("{}", e))?;
             // Insert jump from INPUT to NX53_INPUT if not exists
-            self.ipt.append_unique("filter", "INPUT", "-j NX53_INPUT")?;
+            self.ipt.append_unique("filter", "INPUT", "-j NX53_INPUT").map_err(|e| anyhow!("{}", e))?;
         }
         Ok(())
     }
@@ -43,7 +46,7 @@ impl FirewallBackend for IptablesBackend {
     fn block_ip(&self, ip: &str) -> Result<()> {
         self.ensure_chain()?;
         // Append drop rule
-        self.ipt.append("filter", "NX53_INPUT", &format!("-s {} -j DROP", ip))?;
+        self.ipt.append("filter", "NX53_INPUT", &format!("-s {} -j DROP", ip)).map_err(|e| anyhow!("{}", e))?;
         info!("(Iptables) Blocked IP: {}", ip);
         Ok(())
     }
@@ -51,7 +54,7 @@ impl FirewallBackend for IptablesBackend {
     fn allow_ip(&self, ip: &str) -> Result<()> {
         self.ensure_chain()?;
         // Append accept rule (allowlist)
-        self.ipt.append("filter", "NX53_INPUT", &format!("-s {} -j ACCEPT", ip))?;
+        self.ipt.append("filter", "NX53_INPUT", &format!("-s {} -j ACCEPT", ip)).map_err(|e| anyhow!("{}", e))?;
         info!("(Iptables) Allowed IP: {}", ip);
         Ok(())
     }
@@ -59,8 +62,8 @@ impl FirewallBackend for IptablesBackend {
     fn flush(&self, target: FlushTarget) -> Result<()> {
         match target {
             FlushTarget::All => {
-                if self.ipt.chain_exists("filter", "NX53_INPUT")? {
-                    self.ipt.flush_chain("filter", "NX53_INPUT")?;
+                if self.ipt.chain_exists("filter", "NX53_INPUT").map_err(|e| anyhow!("{}", e))? {
+                    self.ipt.flush_chain("filter", "NX53_INPUT").map_err(|e| anyhow!("{}", e))?;
                 }
                 info!("(Iptables) Flushed all rules");
             }
