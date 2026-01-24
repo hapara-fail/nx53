@@ -27,7 +27,7 @@ jobs:
         run: cp target/release/nx53 nx53-linux-x86_64
 
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: nx53-linux-x86_64
