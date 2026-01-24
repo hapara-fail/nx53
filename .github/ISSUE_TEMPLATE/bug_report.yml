@@ -1,0 +1,59 @@
+name: Bug Report
+description: Report a crash, panic, or logic error in nx53
+title: '[BUG] '
+labels: ['bug', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What is broken?
+      description: Describe the issue clearly. (e.g., "Daemon panics on startup with error X," "False positive blocking on domain Y")
+      placeholder: Describe the bug here...
+    validations:
+      required: true
+  - type: textarea
+    id: command-config
+    attributes:
+      label: Command / Configuration
+      description: What command or flags were you running? (e.g., `nx53 --mode intelligent`, `nx53 block 1.2.3.4`)
+      render: shell
+      placeholder: nx53 --mode intelligent
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      description: e.g., Debian 11, Ubuntu 22.04
+      placeholder: Ubuntu 22.04 LTS
+    validations:
+      required: true
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel Version
+      description: Output of `uname -r`
+      placeholder: 5.15.0-76-generic
+  - type: input
+    id: rust-version
+    attributes:
+      label: Rust Version
+      description: If building from source, `rustc --version`
+      placeholder: rustc 1.70.0
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we make this happen?
+      placeholder: |
+        1. Run command...
+        2. Send traffic...
+        3. See error...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Backtrace
+      description: Please paste relevant logs or the panic backtrace here.
+      render: shell
