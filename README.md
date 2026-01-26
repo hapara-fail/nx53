@@ -156,6 +156,8 @@ Blocks IPs when response/query byte ratio exceeds threshold:
 amplification_ratio_limit = 10  # Block if response > 10x query size
 ```
 
+> **Note:** This feature tracks query sizes from captured packets. For full amplification ratio enforcement, integrate with your DNS server to report response sizes via the `record_response_size` API.
+
 ### Automatic Whitelist Learning
 
 IPs with clean traffic patterns are automatically whitelisted after a configurable period:
@@ -253,7 +255,7 @@ The software is controlled via a standard Command Line Interface.
 | `nx53 allow`   | `<ip/domain>`             | Adds a static rule to whitelist an IP or domain (bypasses all checks).              |
 | `nx53 toggle`  | `intelligent` \| `manual` | Toggles the active status of the heuristic engine or manual rulesets independently. |
 | `nx53 stats`   | `[--json]`                | Displays real-time telemetry: attack counts, dropped IPs, and resource usage.       |
-| `nx53 flush`   | `all` \| `banned`         | Clears current iptables chains managed by nx53.                                     |
+| `nx53 flush`   | `all` \| `banned`         | Clears nftables rules managed by nx53.                                              |
 | `nx53 update`  | N/A                       | Updates nx53 to the latest version from GitHub.                                     |
 | `nx53 version` | N/A                       | Displays the current version.                                                       |
 
@@ -264,7 +266,7 @@ The software is controlled via a standard Command Line Interface.
 - **Language:** [Rust](https://www.rust-lang.org/)
 - **Packet Capture:** `pcap` / `af_packet`
 - **Concurrency:** `Tokio` / `DashMap` for efficient state management.
-- **Firewall:** `iptables` / Linux Netfilter
+- **Firewall:** `nftables` / Linux Netfilter
 
 ---
 

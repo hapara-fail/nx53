@@ -36,6 +36,7 @@ struct IpState {
     /// Total bytes of queries received from this IP
     total_query_bytes: u64,
     /// Total bytes of responses sent to this IP (estimated)
+    #[allow(dead_code)]
     total_response_bytes: u64,
     /// Unique domains queried by this IP (for entropy/reflection detection)
     unique_domains: HashSet<String>,
@@ -384,6 +385,7 @@ impl PacketInspector {
     }
 
     /// Record estimated response size for amplification tracking
+    #[allow(dead_code)]
     pub fn record_response_size(&self, ip: &str, response_size: usize) -> bool {
         let mut should_block = false;
 

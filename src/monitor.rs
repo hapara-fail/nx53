@@ -65,8 +65,23 @@ impl TrafficMonitor {
                         // Doing full packet parsing manually is complex.
                         // We'll trust the logic structure for now and add a TODO for robust parsing.
 
-                        if let Some((src_ip, query_domain, qtype)) = parse_dns_packet(packet.data) {
-                            debug!("Query: {} -> {} ({})", src_ip, query_domain, qtype);
+                        if let Some((src_ip, query_domain, qtype, is_tcp)) =
+                            parse_dns_packet(packet.data)
+                        {
+                            debug!(
+                                "Query: {} -> {} ({}) [{}]",
+                                src_ip,
+                                query_domain,
+                                qtype,
+                                if is_tcp { "TCP" } else { "UDP" }
+                            );
+
+                            // TCP Source Validation: IPs that complete TCP handshake are proven non-spoofed
+                            // Mark them as validated before inspection so they get trusted status
+                            if is_tcp {
+                                inspector.mark_tcp_validated(&src_ip);
+                            }
+
                             let should_block = inspector.inspect(
                                 &src_ip,
                                 &query_domain,
@@ -112,9 +127,10 @@ impl TrafficMonitor {
 }
 
 // Parsing helper - exposed for testing
-pub fn parse_dns_packet(data: &[u8]) -> Option<(String, String, String)> {
+// Returns (source_ip, domain, query_type, is_tcp)
+pub fn parse_dns_packet(data: &[u8]) -> Option<(String, String, String, bool)> {
     use dns_parser::Packet;
-    use etherparse::{NetHeaders, PacketHeaders};
+    use etherparse::{NetHeaders, PacketHeaders, TransportHeader};
 
     // Parse headers
     let headers = PacketHeaders::from_ethernet_slice(data).ok()?;
@@ -127,11 +143,21 @@ pub fn parse_dns_packet(data: &[u8]) -> Option<(String, String, String)> {
         _ => return None,
     };
 
+    // Check transport layer to determine if TCP or UDP
+    let is_tcp = matches!(headers.transport, Some(TransportHeader::Tcp(_)));
+
     // Extract Query Domain using dns-parser
     let payload = headers.payload.slice();
 
+    // For TCP DNS, skip the 2-byte length prefix (RFC 1035)
+    let dns_payload = if is_tcp && payload.len() > 2 {
+        &payload[2..]
+    } else {
+        payload
+    };
+
     // Attempt to parse DNS packet
-    match Packet::parse(payload) {
+    match Packet::parse(dns_payload) {
         Ok(dns) => {
             // Only process Queries, ignore Responses to avoid self-blocking or RRL complexity for now
             if !dns.header.query {
@@ -145,6 +171,7 @@ pub fn parse_dns_packet(data: &[u8]) -> Option<(String, String, String)> {
                     src_ip,
                     question.qname.to_string(),
                     format!("{:?}", question.qtype),
+                    is_tcp,
                 ));
             }
         }

@@ -20,7 +20,7 @@ toml = "0.9.11"
 dns-parser = "0.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-iptables = "0.6"
+nftables = "0.6"
 self_update = "0.42"
 
 [build-dependencies]

@@ -19,98 +19,178 @@ pub enum FlushTarget {
     Banned,
 }
 
-/// Linux-specific iptables backend
+/// Linux-specific nftables backend
 #[cfg(target_os = "linux")]
-pub struct IptablesBackend {
-    ipt: iptables::IPTables,
-}
+pub struct NftablesBackend;
 
 #[cfg(target_os = "linux")]
-impl IptablesBackend {
+impl NftablesBackend {
+    const TABLE_NAME: &'static str = "nx53";
+    const CHAIN_NAME: &'static str = "input";
+
     pub fn new() -> Result<Self> {
-        let ipt = iptables::new(false).map_err(|e| anyhow!("{}", e))?;
-        Ok(Self { ipt })
+        use nftables::{batch::Batch, helper, schema, types};
+
+        // Create table and chain if they don't exist
+        let mut batch = Batch::new();
+
+        // Add table (inet family for IPv4/IPv6)
+        batch.add_cmd(schema::NfCmd::Add(schema::NfListObject::Table(
+            schema::Table {
+                family: types::NfFamily::INet,
+                name: Self::TABLE_NAME.to_string(),
+                handle: None,
+            },
+        )));
+
+        // Add chain
+        batch.add_cmd(schema::NfCmd::Add(schema::NfListObject::Chain(
+            schema::Chain::new(
+                types::NfFamily::INet,
+                Self::TABLE_NAME.to_string(),
+                Self::CHAIN_NAME.to_string(),
+                Some(schema::NfChainType::Filter),
+                Some(schema::NfHook::Input),
+                Some(0),
+                None,
+                Some(schema::NfChainPolicy::Accept),
+            ),
+        )));
+
+        helper::apply_ruleset(&batch.to_nftables(), None, None).map_err(|e| anyhow!("{}", e))?;
+        info!("(nftables) Initialized nx53 table and input chain");
+        Ok(Self)
     }
 
-    fn ensure_chain(&self) -> Result<()> {
-        // Simple check/create logic for NX53_INPUT chain
-        if !self
-            .ipt
-            .chain_exists("filter", "NX53_INPUT")
-            .map_err(|e| anyhow!("{}", e))?
-        {
-            self.ipt
-                .new_chain("filter", "NX53_INPUT")
-                .map_err(|e| anyhow!("{}", e))?;
-            // Insert jump from INPUT to NX53_INPUT if not exists
-            self.ipt
-                .append_unique("filter", "INPUT", "-j NX53_INPUT")
-                .map_err(|e| anyhow!("{}", e))?;
+    fn create_ip_rule(ip: &str, action: &str) -> nftables::schema::Rule {
+        use nftables::{expr, schema, stmt, types};
+
+        // Determine if IPv4 or IPv6
+        let (protocol, addr_field) = if ip.contains(':') {
+            ("ip6", "saddr")
+        } else {
+            ("ip", "saddr")
+        };
+
+        schema::Rule {
+            family: types::NfFamily::INet,
+            table: Self::TABLE_NAME.to_string(),
+            chain: Self::CHAIN_NAME.to_string(),
+            expr: vec![
+                stmt::Statement::Match(stmt::Match {
+                    left: expr::Expression::Named(expr::NamedExpression::Payload(
+                        expr::Payload::PayloadField(expr::PayloadField {
+                            protocol: protocol.to_string(),
+                            field: addr_field.to_string(),
+                        }),
+                    )),
+                    right: expr::Expression::String(ip.to_string()),
+                    op: stmt::Operator::EQ,
+                }),
+                if action == "drop" {
+                    stmt::Statement::Drop(None)
+                } else {
+                    stmt::Statement::Accept(None)
+                },
+            ],
+            handle: None,
+            index: None,
+            comment: Some(format!("nx53: {} {}", action, ip)),
         }
-        Ok(())
     }
 }
 
 #[cfg(target_os = "linux")]
-impl FirewallBackend for IptablesBackend {
+impl FirewallBackend for NftablesBackend {
     fn block_ip(&self, ip: &str) -> Result<()> {
-        self.ensure_chain()?;
-        // Append drop rule
-        self.ipt
-            .append("filter", "NX53_INPUT", &format!("-s {} -j DROP", ip))
-            .map_err(|e| anyhow!("{}", e))?;
-        info!("(Iptables) Blocked IP: {}", ip);
+        use nftables::{batch::Batch, helper, schema};
+
+        let mut batch = Batch::new();
+        batch.add_cmd(schema::NfCmd::Add(schema::NfListObject::Rule(
+            Self::create_ip_rule(ip, "drop"),
+        )));
+
+        helper::apply_ruleset(&batch.to_nftables(), None, None).map_err(|e| anyhow!("{}", e))?;
+        info!("(nftables) Blocked IP: {}", ip);
         Ok(())
     }
 
     fn allow_ip(&self, ip: &str) -> Result<()> {
-        self.ensure_chain()?;
-        // Append accept rule (allowlist)
-        self.ipt
-            .append("filter", "NX53_INPUT", &format!("-s {} -j ACCEPT", ip))
-            .map_err(|e| anyhow!("{}", e))?;
-        info!("(Iptables) Allowed IP: {}", ip);
+        use nftables::{batch::Batch, helper, schema};
+
+        let mut batch = Batch::new();
+        batch.add_cmd(schema::NfCmd::Add(schema::NfListObject::Rule(
+            Self::create_ip_rule(ip, "accept"),
+        )));
+
+        helper::apply_ruleset(&batch.to_nftables(), None, None).map_err(|e| anyhow!("{}", e))?;
+        info!("(nftables) Allowed IP: {}", ip);
         Ok(())
     }
 
     fn flush(&self, target: FlushTarget) -> Result<()> {
+        use nftables::{batch::Batch, helper, schema, types};
+
         match target {
             FlushTarget::All => {
-                if self
-                    .ipt
-                    .chain_exists("filter", "NX53_INPUT")
-                    .map_err(|e| anyhow!("{}", e))?
-                {
-                    self.ipt
-                        .flush_chain("filter", "NX53_INPUT")
-                        .map_err(|e| anyhow!("{}", e))?;
-                }
-                info!("(Iptables) Flushed all rules");
+                // Flush all rules from the chain
+                let mut batch = Batch::new();
+                batch.add_cmd(schema::NfCmd::Flush(schema::NfListObject::Chain(
+                    schema::Chain::new(
+                        types::NfFamily::INet,
+                        Self::TABLE_NAME.to_string(),
+                        Self::CHAIN_NAME.to_string(),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
+                )));
+                helper::apply_ruleset(&batch.to_nftables(), None, None)
+                    .map_err(|e| anyhow!("{}", e))?;
+                info!("(nftables) Flushed all rules");
             }
             FlushTarget::Banned => {
-                // Flush only DROP rules (banned IPs) from the chain, keeping ACCEPT rules (whitelist)
-                if self
-                    .ipt
-                    .chain_exists("filter", "NX53_INPUT")
-                    .map_err(|e| anyhow!("{}", e))?
-                {
-                    // Get all rules in the chain
-                    let rules = self
-                        .ipt
-                        .list("filter", "NX53_INPUT")
-                        .map_err(|e| anyhow!("{}", e))?;
+                // Get current ruleset and delete only DROP rules
+                let ruleset =
+                    helper::get_current_ruleset(None, None).map_err(|e| anyhow!("{}", e))?;
 
-                    // Delete DROP rules (banned IPs) in reverse order to avoid index shifting
-                    for rule in rules.iter().rev() {
-                        if rule.contains("-j DROP") {
-                            // Extract the rule specification (skip the -A chain_name prefix)
-                            if let Some(rule_spec) = rule.strip_prefix("-A NX53_INPUT ") {
-                                let _ = self.ipt.delete("filter", "NX53_INPUT", rule_spec);
+                let mut batch = Batch::new();
+                for obj in &ruleset.objects {
+                    if let schema::NfObject::ListObject(schema::NfListObject::Rule(rule)) = obj {
+                        if rule.table == Self::TABLE_NAME && rule.chain == Self::CHAIN_NAME {
+                            // Check if this is a DROP rule by looking at comment or statements
+                            let is_drop = rule.comment.as_ref().is_some_and(|c| c.contains("drop"))
+                                || rule
+                                    .expr
+                                    .iter()
+                                    .any(|s| matches!(s, nftables::stmt::Statement::Drop(_)));
+
+                            if is_drop {
+                                if let Some(handle) = rule.handle {
+                                    batch.add_cmd(schema::NfCmd::Delete(
+                                        schema::NfListObject::Rule(schema::Rule {
+                                            family: rule.family.clone(),
+                                            table: rule.table.clone(),
+                                            chain: rule.chain.clone(),
+                                            expr: vec![],
+                                            handle: Some(handle),
+                                            index: None,
+                                            comment: None,
+                                        }),
+                                    ));
+                                }
                             }
                         }
                     }
                 }
-                info!("(Iptables) Flushed banned IPs (DROP rules removed, whitelist preserved)");
+
+                if !batch.is_empty() {
+                    helper::apply_ruleset(&batch.to_nftables(), None, None)
+                        .map_err(|e| anyhow!("{}", e))?;
+                }
+                info!("(nftables) Flushed banned IPs (DROP rules removed, whitelist preserved)");
             }
         }
         Ok(())
@@ -153,7 +233,7 @@ impl FirewallBackend for StubBackend {
 
 #[cfg(target_os = "linux")]
 pub fn get_backend() -> Result<Box<dyn FirewallBackend + Send + Sync>> {
-    Ok(Box::new(IptablesBackend::new()?))
+    Ok(Box::new(NftablesBackend::new()?))
 }
 
 #[cfg(not(target_os = "linux"))]

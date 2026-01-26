@@ -56,19 +56,19 @@ if check_cmd apt-get; then
     echo -e "${BOLD}Detected Debian/Ubuntu system.${NC}"
     echo -e "Updating package index..."
     sudo apt-get update
-    echo -e "The following packages will be installed: ${BOLD}build-essential libpcap-dev pkg-config libssl-dev curl git${NC}"
+    echo -e "The following packages will be installed: ${BOLD}build-essential libpcap-dev pkg-config libssl-dev curl git nftables libnftnl-dev${NC}"
     echo -e "You will be prompted to confirm installation and see the size."
-    sudo apt-get install build-essential libpcap-dev pkg-config libssl-dev curl git
+    sudo apt-get install build-essential libpcap-dev pkg-config libssl-dev curl git nftables libnftnl-dev
 elif check_cmd dnf; then
     # Fedora/RHEL
     echo -e "${BOLD}Detected Fedora system.${NC}"
-    echo -e "The following packages will be installed: ${BOLD}@development-tools libpcap-devel openssl-devel curl git${NC}"
-    sudo dnf install @development-tools libpcap-devel openssl-devel curl git
+    echo -e "The following packages will be installed: ${BOLD}@development-tools libpcap-devel openssl-devel curl git nftables libnftnl-devel${NC}"
+    sudo dnf install @development-tools libpcap-devel openssl-devel curl git nftables libnftnl-devel
 elif check_cmd pacman; then
     # Arch Linux
     echo -e "${BOLD}Detected Arch Linux.${NC}"
-    echo -e "The following packages will be installed: ${BOLD}base-devel libpcap openssl curl git${NC}"
-    sudo pacman -S base-devel libpcap openssl curl git
+    echo -e "The following packages will be installed: ${BOLD}base-devel libpcap openssl curl git nftables libnftnl${NC}"
+    sudo pacman -S base-devel libpcap openssl curl git nftables libnftnl
 elif check_cmd brew; then
     # MacOS
     echo -e "${BOLD}Detected macOS (Homebrew).${NC}"
