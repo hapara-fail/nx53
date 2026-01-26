@@ -95,17 +95,19 @@ async fn main() -> Result<()> {
             let monitor_inspector = inspector.clone();
             let monitor_firewall = firewall_arc.clone();
 
-            tokio::task::spawn_blocking(move || {
-                let monitor =
-                    match monitor::TrafficMonitor::new(monitor_inspector, None, monitor_firewall) {
-                        Ok(m) => m,
-                        Err(e) => {
-                            error!("Traffic Monitor failed to initialize: {}", e);
-                            return;
-                        }
-                    };
+            // Initialize monitor and spawn the capture loop as an async task
+            let monitor =
+                match monitor::TrafficMonitor::new(monitor_inspector, None, monitor_firewall) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        error!("Traffic Monitor failed to initialize: {}", e);
+                        return Err(e);
+                    }
+                };
 
-                if let Err(e) = tokio::runtime::Handle::current().block_on(monitor.start()) {
+            // Spawn the monitor as an async task - it internally uses spawn_blocking for pcap
+            tokio::spawn(async move {
+                if let Err(e) = monitor.start().await {
                     error!("Monitor loop crashed: {}", e);
                 }
             });

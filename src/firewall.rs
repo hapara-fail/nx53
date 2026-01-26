@@ -88,9 +88,29 @@ impl FirewallBackend for IptablesBackend {
                 info!("(Iptables) Flushed all rules");
             }
             FlushTarget::Banned => {
-                // In a real implementation, we might label rules with comments to distinguish them.
-                // For now, flush all as a simplification or specific implementation needed.
-                info!("(Iptables) Flushed banned IPs (Not fully implemented specific filtering)");
+                // Flush only DROP rules (banned IPs) from the chain, keeping ACCEPT rules (whitelist)
+                if self
+                    .ipt
+                    .chain_exists("filter", "NX53_INPUT")
+                    .map_err(|e| anyhow!("{}", e))?
+                {
+                    // Get all rules in the chain
+                    let rules = self
+                        .ipt
+                        .list("filter", "NX53_INPUT")
+                        .map_err(|e| anyhow!("{}", e))?;
+
+                    // Delete DROP rules (banned IPs) in reverse order to avoid index shifting
+                    for rule in rules.iter().rev() {
+                        if rule.contains("-j DROP") {
+                            // Extract the rule specification (skip the -A chain_name prefix)
+                            if let Some(rule_spec) = rule.strip_prefix("-A NX53_INPUT ") {
+                                let _ = self.ipt.delete("filter", "NX53_INPUT", rule_spec);
+                            }
+                        }
+                    }
+                }
+                info!("(Iptables) Flushed banned IPs (DROP rules removed, whitelist preserved)");
             }
         }
         Ok(())

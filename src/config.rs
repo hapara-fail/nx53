@@ -38,6 +38,74 @@ pub struct FilterConfig {
     pub block_any_queries: bool,
     pub block_large_txt: bool,
     pub txt_max_size: usize,
+
+    // Enhanced amplification mitigation
+    /// Additional query types to block (e.g., "AXFR", "IXFR")
+    /// DNSSEC types (RRSIG, DNSKEY) are allowed by default for validation
+    #[serde(default)]
+    pub blocked_query_types: Vec<String>,
+
+    /// Maximum UDP response size before forcing TCP (RFC 1035: 512 bytes)
+    #[serde(default = "default_max_udp_response")]
+    pub max_udp_response_size: usize,
+
+    /// Enable Response Rate Limiting (RRL)
+    #[serde(default = "default_true")]
+    pub enable_rrl: bool,
+
+    /// Max identical responses per second per source
+    #[serde(default = "default_rrl_rate")]
+    pub rrl_responses_per_sec: u64,
+
+    /// Slip ratio: respond to 1/N requests when rate limited (0 = drop all)
+    #[serde(default = "default_slip_ratio")]
+    pub rrl_slip_ratio: u8,
+
+    /// Force TCP for responses larger than max_udp_response_size
+    #[serde(default = "default_true")]
+    pub force_tcp_for_large: bool,
+
+    /// Enable TCP source validation (trust IPs that complete TCP handshake)
+    #[serde(default = "default_true")]
+    pub tcp_validation_enabled: bool,
+
+    /// Hours to trust a TCP-validated IP for UDP queries
+    #[serde(default = "default_tcp_ttl")]
+    pub tcp_validation_ttl_hours: u64,
+
+    /// Block if response size exceeds query size by this factor
+    #[serde(default = "default_amp_ratio")]
+    pub amplification_ratio_limit: u64,
+
+    /// Entropy threshold for random subdomain attack detection (0 = disabled)
+    #[serde(default = "default_entropy_threshold")]
+    pub subdomain_entropy_threshold: f64,
+
+    /// Enable reflection pattern detection
+    #[serde(default = "default_true")]
+    pub detect_reflection_patterns: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_max_udp_response() -> usize {
+    512
+}
+fn default_rrl_rate() -> u64 {
+    5
+}
+fn default_slip_ratio() -> u8 {
+    2
+}
+fn default_tcp_ttl() -> u64 {
+    24
+}
+fn default_amp_ratio() -> u64 {
+    10
+}
+fn default_entropy_threshold() -> f64 {
+    3.5
 }
 
 impl Default for FilterConfig {
@@ -46,6 +114,18 @@ impl Default for FilterConfig {
             block_any_queries: true,
             block_large_txt: true,
             txt_max_size: 1024,
+            // Block zone transfers by default (massive amplification)
+            blocked_query_types: vec!["AXFR".to_string(), "IXFR".to_string()],
+            max_udp_response_size: 512,
+            enable_rrl: true,
+            rrl_responses_per_sec: 5,
+            rrl_slip_ratio: 2,
+            force_tcp_for_large: true,
+            tcp_validation_enabled: true,
+            tcp_validation_ttl_hours: 24,
+            amplification_ratio_limit: 10,
+            subdomain_entropy_threshold: 3.5,
+            detect_reflection_patterns: true,
         }
     }
 }

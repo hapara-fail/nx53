@@ -93,12 +93,67 @@ Blocks query types commonly used in amplification attacks:
 
 - **ANY queries:** Blocked by default (major amplification vector)
 - **Large TXT queries:** Blocked when exceeding size threshold
+- **Zone transfers (AXFR/IXFR):** Blocked by default (massive amplification)
+- **Custom blocking:** Configure any query type to block
 
 ```toml
 [filters]
 block_any_queries = true
 block_large_txt = true
 txt_max_size = 1024
+blocked_query_types = ["AXFR", "IXFR"]  # Configurable list
+```
+
+> **Note:** DNSSEC query types (RRSIG, DNSKEY) are allowed by default for proper DNSSEC validation.
+
+### Response Rate Limiting (RRL)
+
+Limits identical responses per second to prevent reflection attacks:
+
+```toml
+[filters]
+enable_rrl = true
+rrl_responses_per_sec = 5      # Max identical responses/sec
+rrl_slip_ratio = 2             # Respond to 1/N requests when rate limited (0 = drop all)
+```
+
+### TCP Source Validation
+
+IPs that complete a TCP handshake are proven non-spoofed and receive trusted status:
+
+```toml
+[filters]
+tcp_validation_enabled = true
+tcp_validation_ttl_hours = 24  # Trust duration after TCP validation
+force_tcp_for_large = true     # Force TCP for responses > 512 bytes
+max_udp_response_size = 512    # UDP response size limit (RFC 1035)
+```
+
+### Reflection Pattern Detection
+
+Detects attack signatures: new IP + single domain + high rate = blocked immediately:
+
+```toml
+[filters]
+detect_reflection_patterns = true
+```
+
+### Subdomain Entropy Detection
+
+Detects random subdomain attacks (e.g., `abc123.example.com`, `xyz789.example.com`):
+
+```toml
+[filters]
+subdomain_entropy_threshold = 3.5  # Shannon entropy threshold (0 = disabled)
+```
+
+### Amplification Ratio Limiting
+
+Blocks IPs when response/query byte ratio exceeds threshold:
+
+```toml
+[filters]
+amplification_ratio_limit = 10  # Block if response > 10x query size
 ```
 
 ### Automatic Whitelist Learning
@@ -127,12 +182,64 @@ DNS Amplification attacks involve spoofed IPs flooding a resolver with queries f
 
 nx53 uses a multi-stage **Defense Pipeline** to filter traffic:
 
-1.  **Static Filtering:** Immediately drops specific query types (e.g., `ANY`, large `TXT`) known for amplification.
-2.  **Volumetric Analysis:** Continuously monitors domain confirmation levels to detect active attacks.
-3.  **Rate Limiting:** Enforces strict queries-per-second limits on new or suspicious IPs, applying graduated temporary bans for offenders.
-4.  **The "First-Packet" Rule:** If a **new** IP's very first query is for a flagged "High-Volume" domain, it is immediately marked as hostile and blocked.
-5.  **The "Escape Hatch" (Legitimacy Validation):** If an IP queries a _different_ domain (one not under attack), it is re-classified as a legitimate user and whitelisted.
-6.  **Auto-Whitelisting:** IPs that maintain a clean reputation for N days (default: 7) are automatically trusted.
+1.  **Static Filtering:** Immediately drops specific query types (e.g., `ANY`, large `TXT`, `AXFR`) known for amplification.
+2.  **Response Rate Limiting (RRL):** Caps identical responses per second with configurable slip ratio.
+3.  **Reflection Pattern Detection:** Identifies attack signatures (new IP, single domain, high rate) in real-time.
+4.  **Volumetric Analysis:** Continuously monitors domain confirmation levels to detect active attacks.
+5.  **Rate Limiting:** Enforces strict queries-per-second limits on new or suspicious IPs, applying graduated temporary bans for offenders.
+6.  **TCP Source Validation:** IPs proven via TCP handshake bypass reflection checks (can't spoof TCP).
+7.  **Amplification Ratio Monitoring:** Blocks IPs when response/query ratio exceeds threshold.
+8.  **Subdomain Entropy Detection:** Detects random subdomain attacks using Shannon entropy analysis.
+9.  **The "First-Packet" Rule:** If a **new** IP's very first query is for a flagged "High-Volume" domain, it is immediately marked as hostile and blocked.
+10. **The "Escape Hatch" (Legitimacy Validation):** If an IP queries a _different_ domain (one not under attack), it is re-classified as a legitimate user and whitelisted.
+11. **Auto-Whitelisting:** IPs that maintain a clean reputation for N days (default: 7) are automatically trusted.
+
+### Defense Pipeline Flowchart
+
+```mermaid
+flowchart TD
+    START([DNS Query Received]) --> A{Query Type Check}
+    A -->|ANY/AXFR/IXFR| BLOCK[🚫 BLOCK]
+    A -->|Large TXT| BLOCK
+    A -->|Allowed Type| B{Response Rate Limit}
+
+    B -->|Exceeded + No Slip| BLOCK
+    B -->|OK or Slip| C{Reflection Pattern?}
+
+    C -->|New IP + 1 Domain + High Rate| BLOCK
+    C -->|No Pattern| D{IP Banned?}
+
+    D -->|Yes, Not Expired| BLOCK
+    D -->|No or Expired| E{Subdomain Entropy}
+
+    E -->|High Entropy + Many Subdomains| BLOCK
+    E -->|Normal| F{TCP Validated?}
+
+    F -->|Yes| TRUST[✅ ALLOW - Trusted]
+    F -->|No| G{Rate Limit Check}
+
+    G -->|Exceeded| BAN[🚫 TEMP BAN]
+    G -->|OK| H{Already Whitelisted?}
+
+    H -->|Yes| ALLOW[✅ ALLOW]
+    H -->|No| I{High-Volume Domain?}
+
+    I -->|Yes + First Packet| BLOCK
+    I -->|No| J{Escape Hatch?}
+
+    J -->|Different Safe Domain| WHITELIST[✅ WHITELIST]
+    J -->|Same Domain| K{Auto-Whitelist Age?}
+
+    K -->|Clean for N Days| WHITELIST
+    K -->|Too New| ALLOW
+
+    style BLOCK fill:#ff6b6b,color:#fff
+    style BAN fill:#ff6b6b,color:#fff
+    style ALLOW fill:#51cf66,color:#fff
+    style TRUST fill:#51cf66,color:#fff
+    style WHITELIST fill:#51cf66,color:#fff
+    style START fill:#339af0,color:#fff
+```
 
 ---
 
