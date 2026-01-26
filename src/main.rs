@@ -86,7 +86,9 @@ async fn main() -> Result<()> {
                 Arc::from(firewall);
 
             // Start update check in background on the Tokio runtime
-            tokio::spawn(async {
+            // Start update check in background on the Tokio runtime
+            // Use spawn_blocking because check_for_updates performs blocking blocking I/O (network + file)
+            tokio::task::spawn_blocking(|| {
                 if let Err(e) = update::check_for_updates() {
                     log::debug!("Failed to check for updates: {}", e);
                 }
@@ -106,9 +108,12 @@ async fn main() -> Result<()> {
                 };
 
             // Spawn the monitor as an async task - it internally uses spawn_blocking for pcap
+            // Spawn the monitor as an async task - it internally uses spawn_blocking for pcap
             tokio::spawn(async move {
                 if let Err(e) = monitor.start().await {
                     error!("Monitor loop crashed: {}", e);
+                    // If the monitor dies, the daemon is useless. Crash so systemd/supervisor restarts us.
+                    std::process::exit(1);
                 }
             });
 
