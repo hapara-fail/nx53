@@ -15,7 +15,7 @@ pub struct Args {
     /// Operational mode
     ///
     /// - Intelligent: Only heuristic filtering is active.
-    /// - Manual: Only static block/allow lists are active.
+    /// - Manual: Only static block/allowlists are active.
     /// - Hybrid: Both heuristic detection and static rules are active (Default).
     #[arg(short, long, value_enum, default_value_t = Mode::Hybrid)]
     pub mode: Mode,
