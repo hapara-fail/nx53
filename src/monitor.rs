@@ -114,19 +114,21 @@ impl TrafficMonitor {
 // Parsing helper - exposed for testing
 pub fn parse_dns_packet(data: &[u8]) -> Option<(String, String, String)> {
     use dns_parser::Packet;
-    use etherparse::{IpHeader, PacketHeaders};
+    use etherparse::{NetHeaders, PacketHeaders};
 
     // Parse headers
     let headers = PacketHeaders::from_ethernet_slice(data).ok()?;
 
     // Extract Source IP
-    let src_ip = match headers.ip? {
-        IpHeader::Version4(ipv4, _) => std::net::IpAddr::V4(ipv4.source.into()).to_string(),
-        IpHeader::Version6(ipv6, _) => std::net::IpAddr::V6(ipv6.source.into()).to_string(),
+    let src_ip = match headers.net? {
+        NetHeaders::Ipv4(ipv4, _) => std::net::IpAddr::V4(ipv4.source.into()).to_string(),
+        NetHeaders::Ipv6(ipv6, _) => std::net::IpAddr::V6(ipv6.source.into()).to_string(),
+        // ARP and other network headers don't apply to DNS packet parsing
+        _ => return None,
     };
 
     // Extract Query Domain using dns-parser
-    let payload = headers.payload;
+    let payload = headers.payload.slice();
 
     // Attempt to parse DNS packet
     match Packet::parse(payload) {
