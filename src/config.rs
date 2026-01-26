@@ -181,6 +181,7 @@ impl AppConfig {
         Ok(config)
     }
 
+    #[allow(dead_code)]
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let content = toml::to_string_pretty(self).context("Failed to serialize config")?;
         fs::write(path, content).context("Failed to write config file")?;

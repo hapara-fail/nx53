@@ -190,7 +190,7 @@ impl FirewallBackend for NftablesBackend {
                                         has_commands = true;
                                         batch.add_cmd(schema::NfCmd::Delete(
                                             schema::NfListObject::Rule(schema::Rule {
-                                                family: rule.family.clone(),
+                                                family: rule.family,
                                                 table: rule.table.clone(),
                                                 chain: rule.chain.clone(),
                                                 expr: std::borrow::Cow::Owned(vec![]),
