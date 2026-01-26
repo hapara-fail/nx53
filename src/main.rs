@@ -85,8 +85,8 @@ async fn main() -> Result<()> {
             let firewall_arc: Arc<dyn firewall::FirewallBackend + Send + Sync> =
                 Arc::from(firewall);
 
-            // Start Monitor in background
-            std::thread::spawn(|| {
+            // Start update check in background on the Tokio runtime
+            tokio::spawn(async {
                 if let Err(e) = update::check_for_updates() {
                     log::debug!("Failed to check for updates: {}", e);
                 }

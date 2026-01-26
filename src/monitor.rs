@@ -6,10 +6,52 @@ use pcap::{Capture, Device};
 use std::sync::Arc;
 use tokio::task;
 
+/// Default snap length for packet capture (capture full packets up to 65535 bytes).
+const SNAPLEN_MAX: i32 = 65535;
+
+/// Capture timeout in milliseconds.
+const CAPTURE_TIMEOUT_MS: i32 = 1000;
+
+/// Structured return type for parsed DNS packets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedDnsPacket {
+    pub source_ip: String,
+    pub domain: String,
+    pub query_type: String,
+    pub is_tcp: bool,
+}
+
 pub struct TrafficMonitor {
     inspector: Arc<PacketInspector>,
     interface_name: String,
     firewall: Arc<dyn FirewallBackend + Send + Sync>,
+}
+
+/// Validate an interface name before passing it to libpcap.
+/// This ensures the name is non-empty, reasonably sized, and only
+/// contains typical interface name characters.
+fn validate_interface_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        return Err(anyhow!("Interface name must not be empty"));
+    }
+
+    // Reasonable upper bound to avoid excessively long or malicious input.
+    if name.len() > 256 {
+        return Err(anyhow!("Interface name is too long"));
+    }
+
+    // Allow common interface name characters: letters, digits, '_', '-', '.', ':'.
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' || c == ':')
+    {
+        return Err(anyhow!(
+            "Interface name '{}' contains invalid characters",
+            name
+        ));
+    }
+
+    Ok(())
 }
 
 impl TrafficMonitor {
@@ -19,6 +61,8 @@ impl TrafficMonitor {
         firewall: Arc<dyn FirewallBackend + Send + Sync>,
     ) -> Result<Self> {
         let device = if let Some(name) = interface_name {
+            // Validate the provided interface name before using it with pcap.
+            validate_interface_name(&name)?;
             Device::list()?
                 .into_iter()
                 .find(|d| d.name == name)
@@ -43,11 +87,11 @@ impl TrafficMonitor {
 
         // Run blocking pcap capture in a dedicated blocking thread so we don't
         // block the async runtime.
-        task::spawn_blocking(move || -> Result<()> {
+        let handle = task::spawn_blocking(move || -> Result<()> {
             let mut cap = Capture::from_device(interface_name.as_str())?
                 .promisc(true)
-                .snaplen(65535)
-                .timeout(1000)
+                .snaplen(SNAPLEN_MAX)
+                .timeout(CAPTURE_TIMEOUT_MS)
                 .open()?;
 
             // Filter for DNS (UDP port 53)
@@ -65,36 +109,34 @@ impl TrafficMonitor {
                         // Doing full packet parsing manually is complex.
                         // We'll trust the logic structure for now and add a TODO for robust parsing.
 
-                        if let Some((src_ip, query_domain, qtype, is_tcp)) =
-                            parse_dns_packet(packet.data)
-                        {
+                        if let Some(parsed) = parse_dns_packet(packet.data) {
                             debug!(
                                 "Query: {} -> {} ({}) [{}]",
-                                src_ip,
-                                query_domain,
-                                qtype,
-                                if is_tcp { "TCP" } else { "UDP" }
+                                parsed.source_ip,
+                                parsed.domain,
+                                parsed.query_type,
+                                if parsed.is_tcp { "TCP" } else { "UDP" }
                             );
 
                             // TCP Source Validation: IPs that complete TCP handshake are proven non-spoofed
                             // Mark them as validated before inspection so they get trusted status
-                            if is_tcp {
-                                inspector.mark_tcp_validated(&src_ip);
+                            if parsed.is_tcp {
+                                inspector.mark_tcp_validated(&parsed.source_ip);
                             }
 
                             let should_block = inspector.inspect(
-                                &src_ip,
-                                &query_domain,
-                                Some(&qtype),
+                                &parsed.source_ip,
+                                &parsed.domain,
+                                Some(&parsed.query_type),
                                 packet.data.len(),
                             );
                             if should_block {
-                                if let Err(e) = firewall.block_ip(&src_ip) {
-                                    error!("Failed to block IP {}: {}", src_ip, e);
+                                if let Err(e) = firewall.block_ip(&parsed.source_ip) {
+                                    error!("Failed to block IP {}: {}", parsed.source_ip, e);
                                 } else {
                                     warn!(
                                         "Blocked hostile IP: {} (Query: {})",
-                                        src_ip, query_domain
+                                        parsed.source_ip, parsed.domain
                                     );
                                 }
                             }
@@ -119,16 +161,20 @@ impl TrafficMonitor {
             }
 
             Ok(())
-        })
-        .await??;
+        });
+
+        let join_result = handle
+            .await
+            .map_err(|e| anyhow!("spawn_blocking task failed: {}", e))?;
+        join_result?;
 
         Ok(())
     }
 }
 
-// Parsing helper - exposed for testing
-// Returns (source_ip, domain, query_type, is_tcp)
-pub fn parse_dns_packet(data: &[u8]) -> Option<(String, String, String, bool)> {
+/// Parse a DNS packet from raw Ethernet frame data.
+/// Returns a structured ParsedDnsPacket on success or None if parsing fails.
+pub fn parse_dns_packet(data: &[u8]) -> Option<ParsedDnsPacket> {
     use dns_parser::Packet;
     use etherparse::{NetHeaders, PacketHeaders, TransportHeader};
 
@@ -167,12 +213,12 @@ pub fn parse_dns_packet(data: &[u8]) -> Option<(String, String, String, bool)> {
             // We are interested in the first question
             if let Some(question) = dns.questions.first() {
                 // qname comes out as "google.com" directly, no trailing dot usually in display
-                return Some((
-                    src_ip,
-                    question.qname.to_string(),
-                    format!("{:?}", question.qtype),
+                return Some(ParsedDnsPacket {
+                    source_ip: src_ip,
+                    domain: question.qname.to_string(),
+                    query_type: format!("{:?}", question.qtype),
                     is_tcp,
-                ));
+                });
             }
         }
         Err(e) => {
@@ -202,5 +248,21 @@ mod tests {
         let data = [0xff; 100];
         // Should return None, not panic
         assert_eq!(parse_dns_packet(&data), None);
+    }
+
+    #[test]
+    fn test_validate_interface_name_valid() {
+        assert!(validate_interface_name("eth0").is_ok());
+        assert!(validate_interface_name("wlan0").is_ok());
+        assert!(validate_interface_name("enp0s3").is_ok());
+        assert!(validate_interface_name("docker0").is_ok());
+        assert!(validate_interface_name("lo").is_ok());
+    }
+
+    #[test]
+    fn test_validate_interface_name_invalid() {
+        assert!(validate_interface_name("").is_err());
+        assert!(validate_interface_name("eth0; rm -rf /").is_err());
+        assert!(validate_interface_name("a".repeat(300).as_str()).is_err());
     }
 }

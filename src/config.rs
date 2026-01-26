@@ -181,7 +181,6 @@ impl AppConfig {
         Ok(config)
     }
 
-    #[allow(dead_code)]
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let content = toml::to_string_pretty(self).context("Failed to serialize config")?;
         fs::write(path, content).context("Failed to write config file")?;
@@ -234,5 +233,29 @@ mod tests {
 
         let loaded: AppConfig = toml::from_str(&toml).unwrap();
         assert_eq!(loaded.get_threshold(), 50_000);
+    }
+
+    #[test]
+    fn test_save_and_load_file() {
+        let config = AppConfig {
+            mode: "test".to_string(),
+            profile: Some(Profile::Enterprise),
+            threshold_override: None,
+            rate_limit: RateLimitConfig::default(),
+            filters: FilterConfig::default(),
+            auto_whitelist_days: Some(14),
+        };
+
+        let temp_path = std::env::temp_dir().join("nx53_test_config.toml");
+        config.save_to_file(&temp_path).unwrap();
+
+        let loaded = AppConfig::load_from_file(&temp_path).unwrap();
+        assert_eq!(loaded.mode, "test");
+        assert_eq!(loaded.profile, Some(Profile::Enterprise));
+        assert_eq!(loaded.get_threshold(), 100_000);
+        assert_eq!(loaded.auto_whitelist_days, Some(14));
+
+        // Cleanup
+        let _ = std::fs::remove_file(&temp_path);
     }
 }
