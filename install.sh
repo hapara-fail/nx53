@@ -32,7 +32,7 @@ error() {
 }
 
 print_header() {
-    clea
+    clear
     printf "${CYAN}"
     echo "========================================"
     echo "    nx53 - DoS Mitigation Installer     "
@@ -40,7 +40,7 @@ print_header() {
     printf "${NC}\n"
 }
 
-print_heade
+print_header
 
 # Helper function to check command existence
 check_cmd() {
@@ -82,7 +82,7 @@ fi
 echo
 if ! check_cmd cargo; then
     info "Rust not found. Installing via rustup..."
-    # read -p "Install Rust? [y/N] " -n 1 -
+    # read -p "Install Rust? [y/N] " -n 1 -r
     # We'll just let rustup handle its own prompt or default to yes if we want, but user asked for confirmation.
     # Actually rustup has an interactive mode by default without -y.
     
