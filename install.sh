@@ -118,20 +118,31 @@ printf "2) ${GREEN}School/Medium Office${NC} (50k requests/day) [Default]\n"
 printf "3) ${GREEN}Enterprise${NC} (100k requests/day)\n"
 printf "4) ${GREEN}ISP/Datacenter${NC} (1M requests/day)\n"
 
-# Try to read from tty if available
-if [ -t 0 ]; then
-    printf "Enter choice [1-4]: "
-    read choice
-else
-    # if piped, try reading from /dev/tty
-    if [ -c /dev/tty ]; then
+while true; do
+    # Try to read from tty if available
+    if [ -t 0 ]; then
+        printf "Enter choice [1-4]: "
+        read -r choice
+    elif [ -c /dev/tty ]; then
+        # if piped, try reading from /dev/tty
         printf "Enter choice [1-4]: " > /dev/tty
-        read choice < /dev/tty
+        read -r choice < /dev/tty
     else
         echo "Non-interactive mode detected. Defaulting to 'School'."
         choice="2"
+        break
     fi
-fi
+
+    # Check input
+    if [[ -z "$choice" ]]; then
+        choice="2"
+        break
+    elif [[ "$choice" =~ ^[1-4]$ ]]; then
+        break
+    else
+        echo "Invalid choice. Please enter a number between 1 and 4."
+    fi
+done
 
 PROFILE_NAME="School"
 
