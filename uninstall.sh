@@ -46,7 +46,7 @@ print_header
 
 # Confirmation
 printf "Are you sure you want to uninstall nx53? [y/N] "
-read -r REPLY
+read -r REPLY < /dev/tty
 if [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ]; then
     echo
     error "Uninstallation aborted."
@@ -83,7 +83,7 @@ sudo rm -f /usr/share/fish/vendor_completions.d/nx53.fish
 
 # 3. Config
 printf "Do you want to remove configuration files in /etc/nx53? [y/N] "
-read -r REPLY
+read -r REPLY < /dev/tty
 echo
 if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ]; then
     info "Removing config directory..."
