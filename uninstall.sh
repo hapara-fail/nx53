@@ -44,6 +44,16 @@ print_header() {
 
 print_header
 
+# Confirmation
+printf "Are you sure you want to uninstall nx53? [y/N] "
+read -r REPLY
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo
+    error "Uninstallation aborted."
+    exit 1
+fi
+echo
+
 # 1. Stop Service
 if systemctl is-active --quiet nx53; then
     info "Stopping nx53 service..."
@@ -72,7 +82,8 @@ sudo rm -f /usr/local/share/zsh/site-functions/_nx53
 sudo rm -f /usr/share/fish/vendor_completions.d/nx53.fish
 
 # 3. Config
-read -p "Do you want to remove configuration files in /etc/nx53? [y/N] " -n 1 -r
+printf "Do you want to remove configuration files in /etc/nx53? [y/N] "
+read -r REPLY
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     info "Removing config directory..."
