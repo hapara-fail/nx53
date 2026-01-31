@@ -12,6 +12,17 @@ use env_logger::Env;
 use log::{error, info, warn};
 use std::sync::Arc;
 
+// Helper to check for root privileges
+#[cfg(target_os = "linux")]
+fn is_root() -> bool {
+    unsafe { libc::geteuid() == 0 }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_root() -> bool {
+    true // Assuming non-Linux environments don't need strict root checks for dev/stub
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -19,13 +30,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Initialize Core Components
-    let firewall = match firewall::get_backend() {
-        Ok(f) => f,
-        Err(e) => {
-            error!("Failed to initialize firewall backend: {}", e);
-            return Err(e);
-        }
-    };
+    // Firewall backend is now initialized lazily per-command to avoid requiring root for all commands
 
     // Load Config: Check local first, then /etc/nx53/config.toml
     let config = if let Ok(c) = config::AppConfig::load_from_file("config.toml") {
@@ -51,10 +56,20 @@ async fn main() -> Result<()> {
 
     match &args.command {
         Some(Commands::Block { target }) => {
+            if !is_root() {
+                error!("This command requires root privileges. Please run with sudo.");
+                return Ok(());
+            }
+            let firewall = firewall::get_backend()?;
             info!("Blocking target: {}", target);
             firewall.block_ip(target)?;
         }
         Some(Commands::Allow { target }) => {
+            if !is_root() {
+                error!("This command requires root privileges. Please run with sudo.");
+                return Ok(());
+            }
+            let firewall = firewall::get_backend()?;
             info!("Allowing target: {}", target);
             firewall.allow_ip(target)?;
         }
@@ -65,6 +80,11 @@ async fn main() -> Result<()> {
             info!("Showing stats (json: {})", json);
         }
         Some(Commands::Flush { target }) => {
+            if !is_root() {
+                error!("This command requires root privileges. Please run with sudo.");
+                return Ok(());
+            }
+            let firewall = firewall::get_backend()?;
             info!("Flushing rules: {:?}", target);
             let fw_target = match target {
                 cli::FlushTarget::All => firewall::FlushTarget::All,
@@ -73,13 +93,28 @@ async fn main() -> Result<()> {
             firewall.flush(fw_target)?;
         }
         Some(Commands::Update) => {
+            if !is_root() {
+                warn!("Update may require root privileges if checking system paths.");
+            }
             update::update()?;
         }
         Some(Commands::Version) => {
             update::print_version();
         }
         None => {
+            if !is_root() {
+                error!("Daemon requires root privileges. Please run with sudo.");
+                return Ok(());
+            }
             info!("Starting nx53 daemon in {:?} mode...", args.mode);
+
+            let firewall = match firewall::get_backend() {
+                Ok(f) => f,
+                Err(e) => {
+                    error!("Failed to initialize firewall backend: {}", e);
+                    return Err(e);
+                }
+            };
 
             // Wrap firewall in Arc to share with monitor thread
             let firewall_arc: Arc<dyn firewall::FirewallBackend + Send + Sync> =

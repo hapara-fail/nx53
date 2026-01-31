@@ -992,6 +992,7 @@ dependencies = [
  "dns-parser",
  "env_logger",
  "etherparse",
+ "libc",
  "log",
  "nftables",
  "pcap",
