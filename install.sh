@@ -53,26 +53,26 @@ info "[1/5] Checking System Dependencies..."
 
 if check_cmd apt-get; then
     # Debian/Ubuntu
-    echo -e "${BOLD}Detected Debian/Ubuntu system.${NC}"
-    echo -e "Updating package index..."
+    printf "%b\n" "${BOLD}Detected Debian/Ubuntu system.${NC}"
+    printf "%b\n" "Updating package index..."
     sudo apt-get update
-    echo -e "The following packages will be installed: ${BOLD}build-essential libpcap-dev pkg-config libssl-dev curl git nftables libnftnl-dev${NC}"
-    echo -e "You will be prompted to confirm installation and see the size."
+    printf "%b\n" "The following packages will be installed: ${BOLD}build-essential libpcap-dev pkg-config libssl-dev curl git nftables libnftnl-dev${NC}"
+    printf "%b\n" "You will be prompted to confirm installation and see the size."
     sudo apt-get install build-essential libpcap-dev pkg-config libssl-dev curl git nftables libnftnl-dev
 elif check_cmd dnf; then
     # Fedora/RHEL
-    echo -e "${BOLD}Detected Fedora system.${NC}"
-    echo -e "The following packages will be installed: ${BOLD}@development-tools libpcap-devel openssl-devel curl git nftables libnftnl-devel${NC}"
+    printf "%b\n" "${BOLD}Detected Fedora system.${NC}"
+    printf "%b\n" "The following packages will be installed: ${BOLD}@development-tools libpcap-devel openssl-devel curl git nftables libnftnl-devel${NC}"
     sudo dnf install @development-tools libpcap-devel openssl-devel curl git nftables libnftnl-devel
 elif check_cmd pacman; then
     # Arch Linux
-    echo -e "${BOLD}Detected Arch Linux.${NC}"
-    echo -e "The following packages will be installed: ${BOLD}base-devel libpcap openssl curl git nftables libnftnl${NC}"
+    printf "%b\n" "${BOLD}Detected Arch Linux.${NC}"
+    printf "%b\n" "The following packages will be installed: ${BOLD}base-devel libpcap openssl curl git nftables libnftnl${NC}"
     sudo pacman -S base-devel libpcap openssl curl git nftables libnftnl
 elif check_cmd brew; then
     # MacOS
-    echo -e "${BOLD}Detected macOS (Homebrew).${NC}"
-    echo -e "The following packages will be installed: ${BOLD}libpcap openssl git${NC}"
+    printf "%b\n" "${BOLD}Detected macOS (Homebrew).${NC}"
+    printf "%b\n" "The following packages will be installed: ${BOLD}libpcap openssl git${NC}"
     brew install libpcap openssl git
 else
     warn "Warning: Could not detect package manager. Please ensure 'build-essential', 'libpcap', and 'git' are installed."
@@ -134,10 +134,10 @@ while true; do
     fi
 
     # Check input
-    if [[ -z "$choice" ]]; then
+    if [ -z "$choice" ]; then
         choice="2"
         break
-    elif [[ "$choice" =~ ^[1-4]$ ]]; then
+    elif [ "$choice" = "1" ] || [ "$choice" = "2" ] || [ "$choice" = "3" ] || [ "$choice" = "4" ]; then
         break
     else
         echo "Invalid choice. Please enter a number between 1 and 4."
