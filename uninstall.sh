@@ -33,6 +33,22 @@ error() {
     echo
 }
 
+remove_path() {
+    local target="$1"
+    
+    # Treat existing files, directories, and symlinks as removable targets.
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        info "Removing $target..."
+        if [ -d "$target" ]; then
+            sudo rm -rf "$target"
+        else
+            sudo rm -f "$target"
+        fi
+    else
+        warn "Not found (already removed?): $target"
+    fi
+}
+
 print_header() {
     clear
     printf "${CYAN}"
@@ -45,7 +61,13 @@ print_header() {
 print_header
 
 # Confirmation
-printf "Are you sure you want to uninstall nx53? [y/N] "
+echo "This will uninstall nx53 and perform the following actions:"
+echo "  • Stop and disable the nx53 service"
+echo "  • Remove the nx53 binary from /usr/local/bin"
+echo "  • Remove the man page and shell completions"
+echo "  • Optionally remove configuration files in /etc/nx53"
+echo
+printf "Are you sure you want to continue? [y/N] "
 read -r REPLY < /dev/tty
 if [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ]; then
     echo
@@ -55,31 +77,64 @@ fi
 echo
 
 # 1. Stop Service
-if systemctl is-active --quiet nx53; then
+set +e
+systemctl is-active --quiet nx53
+ACTIVE_STATUS=$?
+set -e
+if [ "$ACTIVE_STATUS" -eq 0 ]; then
     info "Stopping nx53 service..."
+    set +e
     sudo systemctl stop nx53
+    STOP_STATUS=$?
+    set -e
+    if [ "$STOP_STATUS" -ne 0 ]; then
+        warn "Failed to stop nx53 service (systemctl exit code: $STOP_STATUS)."
+    fi
+elif [ "$ACTIVE_STATUS" -ne 3 ] && [ "$ACTIVE_STATUS" -ne 4 ]; then
+    # 3: inactive, 4: unknown unit – treat others as unexpected failures
+    warn "Could not determine nx53 service status (systemctl exit code: $ACTIVE_STATUS)."
 fi
 
-if systemctl is-enabled --quiet nx53; then
+set +e
+systemctl is-enabled --quiet nx53
+ENABLED_STATUS=$?
+set -e
+if [ "$ENABLED_STATUS" -eq 0 ]; then
     info "Disabling nx53 service..."
+    set +e
     sudo systemctl disable nx53
+    DISABLE_STATUS=$?
+    set -e
+    if [ "$DISABLE_STATUS" -ne 0 ]; then
+        warn "Failed to disable nx53 service (systemctl exit code: $DISABLE_STATUS)."
+    fi
+elif [ "$ENABLED_STATUS" -ne 1 ] && [ "$ENABLED_STATUS" -ne 4 ]; then
+    # 1: disabled, 4: unknown unit – treat others as unexpected failures
+    warn "Could not determine if nx53 service is enabled (systemctl exit code: $ENABLED_STATUS)."
 fi
 
 
 
 # 2. Remove Files
 info "Removing installed files (binary, service, man pages, completions)..."
-sudo rm -f /usr/local/bin/nx53
-sudo rm -f /etc/systemd/system/nx53.service
+remove_path "/usr/local/bin/nx53"
+remove_path "/etc/systemd/system/nx53.service"
+info "Reloading systemd daemon..."
+set +e
 sudo systemctl daemon-reload
-sudo rm -f /usr/share/man/man1/nx53.1.gz
+RELOAD_STATUS=$?
+set -e
+if [ "$RELOAD_STATUS" -ne 0 ]; then
+    warn "Failed to reload systemd daemon (systemctl exit code: $RELOAD_STATUS). You may need to run 'sudo systemctl daemon-reload' manually."
+fi
+remove_path "/usr/share/man/man1/nx53.1.gz"
 
 # Completions
-sudo rm -f /usr/share/bash-completion/completions/nx53
-sudo rm -f /etc/bash_completion.d/nx53
-sudo rm -f /usr/share/zsh/vendor-completions/_nx53
-sudo rm -f /usr/local/share/zsh/site-functions/_nx53
-sudo rm -f /usr/share/fish/vendor_completions.d/nx53.fish
+remove_path "/usr/share/bash-completion/completions/nx53"
+remove_path "/etc/bash_completion.d/nx53"
+remove_path "/usr/share/zsh/vendor-completions/_nx53"
+remove_path "/usr/local/share/zsh/site-functions/_nx53"
+remove_path "/usr/share/fish/vendor_completions.d/nx53.fish"
 
 # 3. Config
 printf "Do you want to remove configuration files in /etc/nx53? [y/N] "
@@ -87,7 +142,7 @@ read -r REPLY < /dev/tty
 echo
 if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ]; then
     info "Removing config directory..."
-    sudo rm -rf /etc/nx53
+    remove_path "/etc/nx53"
     success "Configuration removed."
 else
     warn "Configuration preserved in /etc/nx53."

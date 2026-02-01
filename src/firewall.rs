@@ -24,6 +24,13 @@ pub enum FlushTarget {
 pub struct NftablesBackend;
 
 #[cfg(target_os = "linux")]
+#[derive(Copy, Clone, Debug)]
+enum RuleAction {
+    Drop,
+    Accept,
+}
+
+#[cfg(target_os = "linux")]
 impl NftablesBackend {
     const TABLE_NAME: &'static str = "nx53";
     const CHAIN_NAME: &'static str = "input";
@@ -66,7 +73,7 @@ impl NftablesBackend {
         Ok(Self)
     }
 
-    fn create_ip_rule<'a>(ip: &'a str, action: &str) -> Result<nftables::schema::Rule<'a>> {
+    fn create_ip_rule<'a>(ip: &'a str, action: RuleAction) -> Result<nftables::schema::Rule<'a>> {
         use nftables::{expr, schema, stmt, types};
         use std::borrow::Cow;
         use std::net::IpAddr;
@@ -80,10 +87,9 @@ impl NftablesBackend {
             IpAddr::V6(_) => ("ip6", "saddr"),
         };
 
-        let action_str = if action == Self::ACTION_DROP {
-            Self::ACTION_DROP
-        } else {
-            Self::ACTION_ACCEPT
+        let (action_str, action_stmt) = match action {
+            RuleAction::Drop => (Self::ACTION_DROP, stmt::Statement::Drop(None)),
+            RuleAction::Accept => (Self::ACTION_ACCEPT, stmt::Statement::Accept(None)),
         };
 
         Ok(schema::Rule {
@@ -101,11 +107,7 @@ impl NftablesBackend {
                     right: expr::Expression::String(Cow::Borrowed(ip)),
                     op: stmt::Operator::EQ,
                 }),
-                if action_str == Self::ACTION_DROP {
-                    stmt::Statement::Drop(None)
-                } else {
-                    stmt::Statement::Accept(None)
-                },
+                action_stmt,
             ]),
             handle: None,
             index: None,
@@ -121,7 +123,7 @@ impl FirewallBackend for NftablesBackend {
 
         let mut batch = Batch::new();
         batch.add_cmd(schema::NfCmd::Add(schema::NfListObject::Rule(
-            Self::create_ip_rule(ip, Self::ACTION_DROP)?,
+            Self::create_ip_rule(ip, RuleAction::Drop)?,
         )));
 
         helper::apply_ruleset(&batch.to_nftables()).map_err(|e| anyhow!("{}", e))?;
@@ -134,7 +136,7 @@ impl FirewallBackend for NftablesBackend {
 
         let mut batch = Batch::new();
         batch.add_cmd(schema::NfCmd::Add(schema::NfListObject::Rule(
-            Self::create_ip_rule(ip, Self::ACTION_ACCEPT)?,
+            Self::create_ip_rule(ip, RuleAction::Accept)?,
         )));
 
         helper::apply_ruleset(&batch.to_nftables()).map_err(|e| anyhow!("{}", e))?;
@@ -171,7 +173,6 @@ impl FirewallBackend for NftablesBackend {
                 let ruleset = helper::get_current_ruleset().map_err(|e| anyhow!("{}", e))?;
 
                 let mut batch = Batch::new();
-                let mut has_commands = false;
                 for obj in ruleset.objects.iter() {
                     if let schema::NfObject::ListObject(schema::NfListObject::Rule(rule)) = obj {
                         let rule_table = rule.table.as_ref();
@@ -179,15 +180,16 @@ impl FirewallBackend for NftablesBackend {
                             let rule_chain = rule.chain.as_ref();
                             if rule_chain == Self::CHAIN_NAME {
                                 // Check if this is a DROP rule primarily by statements, then by comment
-                                let is_drop = rule
-                                    .expr
-                                    .iter()
-                                    .any(|s| matches!(s, nftables::stmt::Statement::Drop(_)))
-                                    || rule.comment.as_ref().is_some_and(|c| c.contains("drop"));
+                                let is_drop =
+                                    rule.expr
+                                        .iter()
+                                        .any(|s| matches!(s, nftables::stmt::Statement::Drop(_)))
+                                        || rule.comment.as_ref().is_some_and(|c| {
+                                            c.to_ascii_lowercase().contains("drop")
+                                        });
 
                                 if is_drop {
                                     if let Some(handle) = rule.handle {
-                                        has_commands = true;
                                         batch.add_cmd(schema::NfCmd::Delete(
                                             schema::NfListObject::Rule(schema::Rule {
                                                 family: rule.family,
@@ -206,7 +208,7 @@ impl FirewallBackend for NftablesBackend {
                     }
                 }
 
-                if has_commands {
+                if !batch.commands().is_empty() {
                     helper::apply_ruleset(&batch.to_nftables()).map_err(|e| anyhow!("{}", e))?;
                 }
                 info!("(nftables) Flushed banned IPs (DROP rules removed, whitelist preserved)");

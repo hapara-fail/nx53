@@ -5,7 +5,7 @@ mod logic;
 mod monitor;
 mod update;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Parser;
 use cli::{Args, Commands};
 use env_logger::Env;
@@ -21,6 +21,10 @@ fn is_root() -> bool {
 #[cfg(not(target_os = "linux"))]
 fn is_root() -> bool {
     true // Assuming non-Linux environments don't need strict root checks for dev/stub
+}
+
+fn root_required_error() -> Result<()> {
+    bail!("This command requires root privileges. Please run with sudo.");
 }
 
 #[tokio::main]
@@ -57,8 +61,7 @@ async fn main() -> Result<()> {
     match &args.command {
         Some(Commands::Block { target }) => {
             if !is_root() {
-                error!("This command requires root privileges. Please run with sudo.");
-                return Ok(());
+                return root_required_error();
             }
             let firewall = firewall::get_backend()?;
             info!("Blocking target: {}", target);
@@ -66,8 +69,7 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Allow { target }) => {
             if !is_root() {
-                error!("This command requires root privileges. Please run with sudo.");
-                return Ok(());
+                return root_required_error();
             }
             let firewall = firewall::get_backend()?;
             info!("Allowing target: {}", target);
@@ -81,8 +83,7 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Flush { target }) => {
             if !is_root() {
-                error!("This command requires root privileges. Please run with sudo.");
-                return Ok(());
+                return root_required_error();
             }
             let firewall = firewall::get_backend()?;
             info!("Flushing rules: {:?}", target);
@@ -104,7 +105,7 @@ async fn main() -> Result<()> {
         None => {
             if !is_root() {
                 error!("Daemon requires root privileges. Please run with sudo.");
-                return Ok(());
+                std::process::exit(1);
             }
             info!("Starting nx53 daemon in {:?} mode...", args.mode);
 
