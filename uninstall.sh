@@ -76,7 +76,7 @@ if [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ]; then
 fi
 echo
 
-# 1. Stop Service
+# 1. Stop and Disable Service
 set +e
 systemctl is-active --quiet nx53
 ACTIVE_STATUS=$?
@@ -115,7 +115,7 @@ fi
 
 
 
-# 2. Remove Files
+# 2. Remove Files and Reload Services
 info "Removing installed files (binary, service, man pages, completions)..."
 remove_path "/usr/local/bin/nx53"
 remove_path "/etc/systemd/system/nx53.service"
@@ -136,7 +136,7 @@ remove_path "/usr/share/zsh/vendor-completions/_nx53"
 remove_path "/usr/local/share/zsh/site-functions/_nx53"
 remove_path "/usr/share/fish/vendor_completions.d/nx53.fish"
 
-# 3. Config
+# 3. Configuration Files
 printf "Do you want to remove configuration files in /etc/nx53? [y/N] "
 read -r REPLY < /dev/tty
 echo

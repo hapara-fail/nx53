@@ -208,8 +208,9 @@ impl FirewallBackend for NftablesBackend {
                     }
                 }
 
-                if !batch.commands().is_empty() {
-                    helper::apply_ruleset(&batch.to_nftables()).map_err(|e| anyhow!("{}", e))?;
+                let nftables = batch.to_nftables();
+                if !nftables.objects.is_empty() {
+                    helper::apply_ruleset(&nftables).map_err(|e| anyhow!("{}", e))?;
                 }
                 info!("(nftables) Flushed banned IPs (DROP rules removed, whitelist preserved)");
             }
