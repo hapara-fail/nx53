@@ -188,8 +188,8 @@ impl FirewallBackend for NftablesBackend {
                                             c.to_ascii_lowercase().contains("drop")
                                         });
 
-                                if is_drop {
-                                    if let Some(handle) = rule.handle {
+                                if is_drop
+                                    && let Some(handle) = rule.handle {
                                         batch.add_cmd(schema::NfCmd::Delete(
                                             schema::NfListObject::Rule(schema::Rule {
                                                 family: rule.family,
@@ -202,7 +202,6 @@ impl FirewallBackend for NftablesBackend {
                                             }),
                                         ));
                                     }
-                                }
                             }
                         }
                     }

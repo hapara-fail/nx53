@@ -212,8 +212,8 @@ impl PacketInspector {
                 }
 
                 // TCP Validation Trust: IPs that have completed TCP handshake are more trusted
-                if state.tcp_validated {
-                    if let Some(validation_time) = state.tcp_validation_time {
+                if state.tcp_validated
+                    && let Some(validation_time) = state.tcp_validation_time {
                         let ttl = Duration::from_secs(self.filter_config.tcp_validation_ttl_hours * 3600);
                         if now.duration_since(validation_time) > ttl {
                             // TCP validation expired
@@ -222,7 +222,6 @@ impl PacketInspector {
                             debug!("TCP validation expired for {}", source_ip);
                         }
                     }
-                }
 
                 // Response Rate Limiting (RRL) - limits identical responses
                 if self.filter_config.enable_rrl {
