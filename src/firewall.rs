@@ -188,20 +188,19 @@ impl FirewallBackend for NftablesBackend {
                                             c.to_ascii_lowercase().contains("drop")
                                         });
 
-                                if is_drop
-                                    && let Some(handle) = rule.handle {
-                                        batch.add_cmd(schema::NfCmd::Delete(
-                                            schema::NfListObject::Rule(schema::Rule {
-                                                family: rule.family,
-                                                table: rule.table.clone(),
-                                                chain: rule.chain.clone(),
-                                                expr: std::borrow::Cow::Owned(vec![]),
-                                                handle: Some(handle),
-                                                index: None,
-                                                comment: None,
-                                            }),
-                                        ));
-                                    }
+                                if is_drop && let Some(handle) = rule.handle {
+                                    batch.add_cmd(schema::NfCmd::Delete(
+                                        schema::NfListObject::Rule(schema::Rule {
+                                            family: rule.family,
+                                            table: rule.table.clone(),
+                                            chain: rule.chain.clone(),
+                                            expr: std::borrow::Cow::Owned(vec![]),
+                                            handle: Some(handle),
+                                            index: None,
+                                            comment: None,
+                                        }),
+                                    ));
+                                }
                             }
                         }
                     }
