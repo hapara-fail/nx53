@@ -18,6 +18,20 @@ The primary objective of nx53 is to protect open DNS resolvers from being exploi
 
 ---
 
+## 🎯 Protection Philosophy
+
+It is important to understand the specific security role `nx53` plays in your infrastructure:
+
+* **✅ The Problem It Solves (Reflector Abuse):**
+    By stopping your server from replying to spoofed requests, `nx53` prevents your infrastructure from being weaponized to attack innocent victims. This protects your **Reputation** (keeping you off blacklists), saves your **Outbound Bandwidth**, and prevents **ISP/VPS Abuse Complaints** that typically lead to account suspension.
+
+* **❌ The Limitation (Inbound Saturation):**
+    `nx53` runs *on* your server. If an attacker targets **you** directly with a volumetric attack larger than your internet connection (e.g., 10Gbps of traffic on a 1Gbps port), your pipe will be saturated *before* the software can filter the packets.
+
+`nx53` is the ideal "Host-Based" defense. It is the most effective way to secure a custom UDP service without paying thousands of dollars for enterprise "upstream" mitigation (like Cloudflare Spectrum).
+
+---
+
 ## 🚀 Installation & Management
 
 ### Quick Install (Debian/Ubuntu)
