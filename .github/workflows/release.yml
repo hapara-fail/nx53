@@ -45,10 +45,16 @@ jobs:
 
       - name: Build (native)
         if: matrix.use_cross == false
+        env:
+          OPENSSL_STATIC: 1
+          OPENSSL_VENDORED: 1
         run: cargo build --release --target ${{ matrix.target }} --verbose
 
       - name: Build (cross)
         if: matrix.use_cross == true
+        env:
+          OPENSSL_STATIC: 1
+          OPENSSL_VENDORED: 1
         run: cross build --release --target ${{ matrix.target }} --verbose
 
       - name: Create package directory
