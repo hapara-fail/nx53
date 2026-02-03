@@ -22,11 +22,11 @@ The primary objective of nx53 is to protect open DNS resolvers from being exploi
 
 It is important to understand the specific security role `nx53` plays in your infrastructure:
 
-* **✅ The Problem It Solves (Reflector Abuse):**
-    By stopping your server from replying to spoofed requests, `nx53` prevents your infrastructure from being weaponized to attack innocent victims. This protects your **Reputation** (keeping you off blacklists), saves your **Outbound Bandwidth**, and prevents **ISP/VPS Abuse Complaints** that typically lead to account suspension.
+- **✅ The Problem It Solves (Reflector Abuse):**
+  By stopping your server from replying to spoofed requests, `nx53` prevents your infrastructure from being weaponized to attack innocent victims. This protects your **Reputation** (keeping you off blacklists), saves your **Outbound Bandwidth**, and prevents **ISP/VPS Abuse Complaints** that typically lead to account suspension.
 
-* **❌ The Limitation (Inbound Saturation):**
-    `nx53` runs *on* your server. If an attacker targets **you** directly with a volumetric attack larger than your internet connection (e.g., 10Gbps of traffic on a 1Gbps port), your pipe will be saturated *before* the software can filter the packets.
+- **❌ The Limitation (Inbound Saturation):**
+  `nx53` runs _on_ your server. If an attacker targets **you** directly with a volumetric attack larger than your internet connection (e.g., 10Gbps of traffic on a 1Gbps port), your pipe will be saturated _before_ the software can filter the packets.
 
 `nx53` is the ideal "Host-Based" defense. It is the most effective way to secure a custom UDP service without paying thousands of dollars for enterprise "upstream" mitigation (like Cloudflare Spectrum).
 
@@ -36,7 +36,7 @@ It is important to understand the specific security role `nx53` plays in your in
 
 ### Quick Install (Debian/Ubuntu)
 
-The easiest way to install nx53 is to run the automated installer. This will download dependencies, compile the project, install the binary, set up the systemd service, and generate man pages and shell completions.
+The easiest way to install nx53 is to run the automated installer. **By default, it downloads pre-built binaries from GitHub releases**, which is significantly faster than building from source (especially on low-resource VMs). If no pre-built binary is available for your architecture or the download fails, it automatically falls back to building from source.
 
 ```bash
 curl -s -S -L https://raw.githubusercontent.com/hapara-fail/nx53/main/install.sh | sh -s -- -v
@@ -49,6 +49,19 @@ wget --no-verbose -O - https://raw.githubusercontent.com/hapara-fail/nx53/main/i
 ```
 
 During installation, you will be prompted to select a traffic profile (Home, School, Enterprise, Datacenter).
+
+**Supported Architectures (Pre-built Binaries):**
+
+- Linux x86_64 (AMD64)
+- Linux aarch64 (ARM64)
+
+**Build from Source Option:**
+
+If you prefer to build from source even when pre-built binaries are available:
+
+```bash
+curl -s -S -L https://raw.githubusercontent.com/hapara-fail/nx53/main/install.sh | sh -s -- --build-from-source
+```
 
 ### Uninstallation
 

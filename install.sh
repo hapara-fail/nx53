@@ -47,68 +47,178 @@ check_cmd() {
     command -v "$1" > /dev/null 2>&1
 }
 
-# --- 1. Dependency Check & Installation ---
+# Parse command line arguments
+BUILD_FROM_SOURCE=false
+for arg in "$@"; do
+    case $arg in
+        --build-from-source)
+            BUILD_FROM_SOURCE=true
+            shift
+            ;;
+    esac
+done
 
-info "[1/5] Checking System Dependencies..."
+# --- Attempt Pre-built Binary Download ---
+BINARY_DOWNLOADED=false
 
-if check_cmd apt-get; then
-    # Debian/Ubuntu
-    printf "%b\n" "${BOLD}Detected Debian/Ubuntu system.${NC}"
-    printf "%b\n" "Updating package index..."
-    sudo apt-get update
-    printf "%b\n" "The following packages will be installed: ${BOLD}build-essential libpcap-dev pkg-config libssl-dev curl git nftables libnftnl-dev${NC}"
-    printf "%b\n" "You will be prompted to confirm installation and see the size."
-    sudo apt-get install build-essential libpcap-dev pkg-config libssl-dev curl git nftables libnftnl-dev < /dev/tty
-elif check_cmd dnf; then
-    # Fedora/RHEL
-    printf "%b\n" "${BOLD}Detected Fedora system.${NC}"
-    printf "%b\n" "The following packages will be installed: ${BOLD}@development-tools libpcap-devel openssl-devel curl git nftables libnftnl-devel${NC}"
-    sudo dnf install @development-tools libpcap-devel openssl-devel curl git nftables libnftnl-devel < /dev/tty
-elif check_cmd pacman; then
-    # Arch Linux
-    printf "%b\n" "${BOLD}Detected Arch Linux.${NC}"
-    printf "%b\n" "The following packages will be installed: ${BOLD}base-devel libpcap openssl curl git nftables libnftnl${NC}"
-    sudo pacman -S base-devel libpcap openssl curl git nftables libnftnl < /dev/tty
-elif check_cmd brew; then
-    # MacOS
-    printf "%b\n" "${BOLD}Detected macOS (Homebrew).${NC}"
-    printf "%b\n" "The following packages will be installed: ${BOLD}libpcap openssl git${NC}"
-    brew install libpcap openssl git
-else
-    warn "Warning: Could not detect package manager. Please ensure 'build-essential', 'libpcap', and 'git' are installed."
-fi
-
-# Check for Rust
-echo
-if ! check_cmd cargo; then
-    info "Rust not found. Installing via rustup..."
-    # read -p "Install Rust? [y/N] " -n 1 -r
-    # We'll just let rustup handle its own prompt or default to yes if we want, but user asked for confirmation.
-    # Actually rustup has an interactive mode by default without -y.
+if [ "$BUILD_FROM_SOURCE" = false ]; then
+    info "[1/5] Attempting to download pre-built binary..."
     
-    printf "Rustup installer will run now. It will display download size and ask for confirmation.\n"
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-    . "$HOME/.cargo/env"
+    # Detect architecture
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)
+            DOWNLOAD_ARCH="x86_64"
+            ;;
+        aarch64|arm64)
+            DOWNLOAD_ARCH="aarch64"
+            ;;
+        *)
+            warn "Unsupported architecture: $ARCH. Falling back to source build."
+            BUILD_FROM_SOURCE=true
+            ;;
+    esac
+    
+    if [ "$BUILD_FROM_SOURCE" = false ]; then
+        # Get latest release info from GitHub
+        echo "Fetching latest release info..."
+        LATEST_RELEASE=$(curl -sL https://api.github.com/repos/hapara-fail/nx53/releases/latest)
+        LATEST_VERSION=$(echo "$LATEST_RELEASE" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        
+        if [ -z "$LATEST_VERSION" ]; then
+            warn "Could not fetch latest release. Falling back to source build."
+            BUILD_FROM_SOURCE=true
+        else
+            echo "Latest release: $LATEST_VERSION"
+            
+            # Download tarball
+            TARBALL_URL="https://github.com/hapara-fail/nx53/releases/download/${LATEST_VERSION}/nx53-linux-${DOWNLOAD_ARCH}.tar.gz"
+            CHECKSUM_URL="https://github.com/hapara-fail/nx53/releases/download/${LATEST_VERSION}/checksums.txt"
+            
+            echo "Downloading $TARBALL_URL..."
+            if curl -LO "$TARBALL_URL" && curl -LO "$CHECKSUM_URL"; then
+                # Verify checksum
+                echo "Verifying checksum..."
+                EXPECTED_CHECKSUM=$(grep "nx53-linux-${DOWNLOAD_ARCH}.tar.gz" checksums.txt | awk '{print $1}')
+                ACTUAL_CHECKSUM=$(sha256sum "nx53-linux-${DOWNLOAD_ARCH}.tar.gz" | awk '{print $1}')
+                
+                if [ "$EXPECTED_CHECKSUM" = "$ACTUAL_CHECKSUM" ]; then
+                    success "Checksum verified!"
+                    
+                    # Extract tarball
+                    echo "Extracting files..."
+                    mkdir -p nx53-extracted
+                    tar xzf "nx53-linux-${DOWNLOAD_ARCH}.tar.gz" -C nx53-extracted
+                    
+                    BINARY_DOWNLOADED=true
+                    success "Pre-built binary downloaded successfully!"
+                else
+                    error "Checksum verification failed!"
+                    warn "Expected: $EXPECTED_CHECKSUM"
+                    warn "Got: $ACTUAL_CHECKSUM"
+                    warn "Falling back to source build."
+                    BUILD_FROM_SOURCE=true
+                fi
+            else
+                warn "Download failed. Falling back to source build."
+                BUILD_FROM_SOURCE=true
+            fi
+        fi
+    fi
+fi
 
+# --- Dependency Check & Installation ---
+
+if [ "$BINARY_DOWNLOADED" = false ]; then
+    info "[1/5] Checking System Dependencies..."
 else
-    success "Rust is already installed."
+    info "[2/5] Installing System Dependencies..."
 fi
 
-# --- 2. Clone & Build ---
-# Check if we are in the repo, if not clone it
-CLONED_DIR=""
-# We check for Cargo.toml AND if it contains nx53 to be sure we're in the right place
-if [ ! -f "Cargo.toml" ] || ! grep -q "nx53" Cargo.toml; then
-
-    info "Not inside nx53 repository. Cloning to temporary directory..."
-    CLONED_DIR=$(mktemp -d)
-    echo "Cloning into $CLONED_DIR..."
-    git clone https://github.com/hapara-fail/nx53.git "$CLONED_DIR"
-    cd "$CLONED_DIR"
+# Only install build tools if building from source
+if [ "$BUILD_FROM_SOURCE" = true ]; then
+    if check_cmd apt-get; then
+        # Debian/Ubuntu
+        printf "%b\n" "${BOLD}Detected Debian/Ubuntu system.${NC}"
+        printf "%b\n" "Updating package index..."
+        sudo apt-get update
+        printf "%b\n" "The following packages will be installed: ${BOLD}build-essential libpcap-dev pkg-config libssl-dev curl git nftables libnftnl-dev${NC}"
+        printf "%b\n" "You will be prompted to confirm installation and see the size."
+        sudo apt-get install build-essential libpcap-dev pkg-config libssl-dev curl git nftables libnftnl-dev < /dev/tty
+    elif check_cmd dnf; then
+        # Fedora/RHEL
+        printf "%b\n" "${BOLD}Detected Fedora system.${NC}"
+        printf "%b\n" "The following packages will be installed: ${BOLD}@development-tools libpcap-devel openssl-devel curl git nftables libnftnl-devel${NC}"
+        sudo dnf install @development-tools libpcap-devel openssl-devel curl git nftables libnftnl-devel < /dev/tty
+    elif check_cmd pacman; then
+        # Arch Linux
+        printf "%b\n" "${BOLD}Detected Arch Linux.${NC}"
+        printf "%b\n" "The following packages will be installed: ${BOLD}base-devel libpcap openssl curl git nftables libnftnl${NC}"
+        sudo pacman -S base-devel libpcap openssl curl git nftables libnftnl < /dev/tty
+    elif check_cmd brew; then
+        # MacOS
+        printf "%b\n" "${BOLD}Detected macOS (Homebrew).${NC}"
+        printf "%b\n" "The following packages will be installed: ${BOLD}libpcap openssl git${NC}"
+        brew install libpcap openssl git
+    else
+        warn "Warning: Could not detect package manager. Please ensure 'build-essential', 'libpcap', and 'git' are installed."
+    fi
+    
+    # Check for Rust
+    echo
+    if ! check_cmd cargo; then
+        info "Rust not found. Installing via rustup..."
+        
+        printf "Rustup installer will run now. It will display download size and ask for confirmation.\n"
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+        . "$HOME/.cargo/env"
+    
+    else
+        success "Rust is already installed."
+    fi
+else
+    # Only install runtime dependencies (nftables)
+    if check_cmd apt-get; then
+        printf "%b\n" "${BOLD}Detected Debian/Ubuntu system.${NC}"
+        printf "%b\n" "Installing runtime dependencies..."
+        sudo apt-get update
+        sudo apt-get install -y nftables
+    elif check_cmd dnf; then
+        printf "%b\n" "${BOLD}Detected Fedora system.${NC}"
+        sudo dnf install -y nftables
+    elif check_cmd pacman; then
+        printf "%b\n" "${BOLD}Detected Arch Linux.${NC}"
+        sudo pacman -S --noconfirm nftables
+    elif check_cmd brew; then
+        printf "%b\n" "${BOLD}Detected macOS (Homebrew).${NC}"
+        echo "Runtime dependencies already satisfied."
+    else
+        warn "Warning: Could not detect package manager."
+    fi
+    success "Runtime dependencies installed."
 fi
 
-info "[2/5] Building nx53..."
-cargo build --release
+# --- 2. Build or Use Downloaded Binary ---
+
+if [ "$BINARY_DOWNLOADED" = true ]; then
+    info "[3/5] Using downloaded binary..."
+    echo "Skipping build step."
+else
+    # Check if we are in the repo, if not clone it
+    CLONED_DIR=""
+    # We check for Cargo.toml AND if it contains nx53 to be sure we're in the right place
+    if [ ! -f "Cargo.toml" ] || ! grep -q "nx53" Cargo.toml; then
+    
+        info "Not inside nx53 repository. Cloning to temporary directory..."
+        CLONED_DIR=$(mktemp -d)
+        echo "Cloning into $CLONED_DIR..."
+        git clone https://github.com/hapara-fail/nx53.git "$CLONED_DIR"
+        cd "$CLONED_DIR"
+    fi
+    
+    info "[2/5] Building nx53..."
+    cargo build --release
+fi
 
 # --- 3. Profile Selection ---
 info "[3/5] Configuration Wizard"
@@ -162,46 +272,79 @@ CONFIG_DIR="/etc/nx53"
 
 # Install Binary
 echo "Installing binary to $INSTALL_DIR..."
-sudo cp target/release/nx53 "$INSTALL_DIR/"
+if [ "$BINARY_DOWNLOADED" = true ]; then
+    sudo cp nx53-extracted/bin/nx53 "$INSTALL_DIR/"
+else
+    sudo cp target/release/nx53 "$INSTALL_DIR/"
+fi
 sudo chmod +x "$INSTALL_DIR/nx53"
 
 # Install Man Page
 echo "Installing man page..."
-# Find man page, allowing for build artifacts
-MAN_FILE=$(find target/release/build -name "nx53.1" | head -n 1)
-
-if [ -n "$MAN_FILE" ]; then
-    sudo mkdir -p /usr/share/man/man1
-    sudo cp "$MAN_FILE" /usr/share/man/man1/
-    sudo gzip -f /usr/share/man/man1/nx53.1
-    echo "Man page installed to /usr/share/man/man1/nx53.1.gz"
+if [ "$BINARY_DOWNLOADED" = true ]; then
+    if [ -f "nx53-extracted/man/man1/nx53.1.gz" ]; then
+        sudo mkdir -p /usr/share/man/man1
+        sudo cp nx53-extracted/man/man1/nx53.1.gz /usr/share/man/man1/
+        echo "Man page installed to /usr/share/man/man1/nx53.1.gz"
+    fi
 else
-    warn "Warning: Could not find generated man page."
+    # Find man page, allowing for build artifacts
+    MAN_FILE=$(find target/release/build -name "nx53.1" | head -n 1)
+    
+    if [ -n "$MAN_FILE" ]; then
+        sudo mkdir -p /usr/share/man/man1
+        sudo cp "$MAN_FILE" /usr/share/man/man1/
+        sudo gzip -f /usr/share/man/man1/nx53.1
+        echo "Man page installed to /usr/share/man/man1/nx53.1.gz"
+    else
+        warn "Warning: Could not find generated man page."
+    fi
 fi
 
 # Install Completions
 echo "Installing shell completions..."
-# Ensure COMP_DIR is found relative to MAN_FILE if it exists, otherwise check target structure
-if [ -n "$MAN_FILE" ]; then
-    COMP_DIR=$(dirname "$MAN_FILE")/../completions
-    
+if [ "$BINARY_DOWNLOADED" = true ]; then
     # Bash
-    if [ -d "/usr/share/bash-completion/completions" ]; then
-        sudo cp "$COMP_DIR/nx53.bash" /usr/share/bash-completion/completions/nx53
-    elif [ -d "/etc/bash_completion.d" ]; then
-        sudo cp "$COMP_DIR/nx53.bash" /etc/bash_completion.d/nx53
+    if [ -d "/usr/share/bash-completion/completions" ] && [ -f "nx53-extracted/completions/nx53.bash" ]; then
+        sudo cp nx53-extracted/completions/nx53.bash /usr/share/bash-completion/completions/nx53
+    elif [ -d "/etc/bash_completion.d" ] && [ -f "nx53-extracted/completions/nx53.bash" ]; then
+        sudo cp nx53-extracted/completions/nx53.bash /etc/bash_completion.d/nx53
     fi
 
     # Zsh
-    if [ -d "/usr/share/zsh/vendor-completions" ]; then
-        sudo cp "$COMP_DIR/_nx53" /usr/share/zsh/vendor-completions/
-    elif [ -d "/usr/local/share/zsh/site-functions" ]; then
-        sudo cp "$COMP_DIR/_nx53" /usr/local/share/zsh/site-functions/
+    if [ -d "/usr/share/zsh/vendor-completions" ] && [ -f "nx53-extracted/completions/_nx53" ]; then
+        sudo cp nx53-extracted/completions/_nx53 /usr/share/zsh/vendor-completions/
+    elif [ -d "/usr/local/share/zsh/site-functions" ] && [ -f "nx53-extracted/completions/_nx53" ]; then
+        sudo cp nx53-extracted/completions/_nx53 /usr/local/share/zsh/site-functions/
     fi
 
     # Fish
-    if [ -d "/usr/share/fish/vendor_completions.d" ]; then
-        sudo cp "$COMP_DIR/nx53.fish" /usr/share/fish/vendor_completions.d/
+    if [ -d "/usr/share/fish/vendor_completions.d" ] && [ -f "nx53-extracted/completions/nx53.fish" ]; then
+        sudo cp nx53-extracted/completions/nx53.fish /usr/share/fish/vendor_completions.d/
+    fi
+else
+    # Ensure COMP_DIR is found relative to MAN_FILE if it exists, otherwise check target structure
+    if [ -n "$MAN_FILE" ]; then
+        COMP_DIR=$(dirname "$MAN_FILE")/../completions
+        
+        # Bash
+        if [ -d "/usr/share/bash-completion/completions" ]; then
+            sudo cp "$COMP_DIR/nx53.bash" /usr/share/bash-completion/completions/nx53
+        elif [ -d "/etc/bash_completion.d" ]; then
+            sudo cp "$COMP_DIR/nx53.bash" /etc/bash_completion.d/nx53
+        fi
+    
+        # Zsh
+        if [ -d "/usr/share/zsh/vendor-completions" ]; then
+            sudo cp "$COMP_DIR/_nx53" /usr/share/zsh/vendor-completions/
+        elif [ -d "/usr/local/share/zsh/site-functions" ]; then
+            sudo cp "$COMP_DIR/_nx53" /usr/local/share/zsh/site-functions/
+        fi
+    
+        # Fish
+        if [ -d "/usr/share/fish/vendor_completions.d" ]; then
+            sudo cp "$COMP_DIR/nx53.fish" /usr/share/fish/vendor_completions.d/
+        fi
     fi
 fi
 
@@ -258,7 +401,12 @@ else
     echo "You can run nx53 manually: ${BOLD}sudo $INSTALL_DIR/nx53${NC}"
 fi
 
-# Cleanup if cloned
+# Cleanup
+if [ "$BINARY_DOWNLOADED" = true ]; then
+    echo "Cleaning up downloaded files..."
+    rm -rf nx53-extracted "nx53-linux-${DOWNLOAD_ARCH}.tar.gz" checksums.txt
+fi
+
 if [ -n "$CLONED_DIR" ]; then
     echo "Cleaning up temporary files..."
     rm -rf "$CLONED_DIR"
