@@ -1,6 +1,6 @@
+use anyhow::Result;
 #[cfg(target_os = "linux")]
 use anyhow::anyhow;
-use anyhow::Result;
 #[cfg(target_os = "linux")]
 use log::info;
 #[cfg(not(target_os = "linux"))]

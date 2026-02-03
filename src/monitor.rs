@@ -1,6 +1,6 @@
 use crate::firewall::FirewallBackend;
 use crate::logic::PacketInspector;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use log::{debug, error, info, warn};
 use pcap::{Capture, Device};
 use std::sync::Arc;

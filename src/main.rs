@@ -5,7 +5,7 @@ mod logic;
 mod monitor;
 mod update;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 use cli::{Args, Commands};
 use env_logger::Env;
@@ -42,7 +42,9 @@ async fn main() -> Result<()> {
     } else if let Ok(c) = config::AppConfig::load_from_file("/etc/nx53/config.toml") {
         c
     } else {
-        warn!("No config file found (checked ./config.toml and /etc/nx53/config.toml). Using defaults.");
+        warn!(
+            "No config file found (checked ./config.toml and /etc/nx53/config.toml). Using defaults."
+        );
         config::AppConfig::default()
     };
     info!(
