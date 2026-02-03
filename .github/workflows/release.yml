@@ -20,8 +20,10 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             arch: x86_64
+            use_cross: false
           - target: aarch64-unknown-linux-gnu
             arch: aarch64
+            use_cross: true
 
     steps:
       - uses: actions/checkout@v6
@@ -31,24 +33,23 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install dependencies
+      - name: Install dependencies (native build)
+        if: matrix.use_cross == false
         run: |
           sudo apt-get update
           sudo apt-get install -y libpcap-dev pkg-config libssl-dev libnftnl-dev
 
-      - name: Install cross-compilation tools (aarch64)
-        if: matrix.arch == 'aarch64'
-        run: |
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
-          # Use vendored OpenSSL for cross-compilation to avoid pkg-config issues
-          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
-          echo "OPENSSL_VENDORED=1" >> $GITHUB_ENV
+      - name: Install cross
+        if: matrix.use_cross == true
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Build
+      - name: Build (native)
+        if: matrix.use_cross == false
         run: cargo build --release --target ${{ matrix.target }} --verbose
+
+      - name: Build (cross)
+        if: matrix.use_cross == true
+        run: cross build --release --target ${{ matrix.target }} --verbose
 
       - name: Create package directory
         run: mkdir -p package/bin package/man/man1 package/completions
